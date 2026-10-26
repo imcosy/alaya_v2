@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="860" viewBox="0 0 1200 860" role="img" aria-label="Alaya architecture">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080b16"/>
+      <stop offset="1" stop-color="#101728"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#241f14"/>
+      <stop offset="1" stop-color="#2e2617"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#e8c88a" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#e8c88a" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="arrC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6fd3ff"/>
+    </marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#e8c88a"/>
+    </marker>
+    <marker id="arrM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8fa4c8"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="860" fill="url(#bg)"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+
+    <!-- 标题 -->
+    <text x="60" y="50" fill="#e8c88a" font-size="13" letter-spacing="4">ARCHITECTURE</text>
+    <text x="60" y="82" fill="#f2f5fa" font-size="24" font-weight="700">一次交互的闭环：感知 → 涌现 → 表达 → 熏习</text>
+    <text x="60" y="108" fill="#7b869c" font-size="13">没有向量库检索拼装。每一句话都从它自己的记忆种子里长出来。</text>
+
+    <!-- ============ 中央主干 ============ -->
+    <g>
+      <ellipse cx="600" cy="430" rx="235" ry="125" fill="url(#halo)"/>
+
+      <rect x="450" y="140" width="300" height="76" rx="14" fill="#141b2e" stroke="#2b3550"/>
+      <circle cx="478" cy="164" r="4" fill="#6fd3ff"/>
+      <text x="492" y="169" fill="#eef2f8" font-size="15.5" font-weight="600">感知输入</text>
+      <text x="474" y="194" fill="#8b96ad" font-size="12.5">麦克风 16k PCM · 文字 · 照片 · 文档</text>
+
+      <rect x="450" y="252" width="300" height="76" rx="14" fill="#141b2e" stroke="#2b3550"/>
+      <circle cx="478" cy="276" r="4" fill="#6fd3ff"/>
+      <text x="492" y="281" fill="#eef2f8" font-size="15.5" font-weight="600">感官种子 · 现量</text>
+      <text x="474" y="306" fill="#8b96ad" font-size="12.5">尚未结生：只作“此刻的境”</text>
+
+      <rect x="430" y="364" width="340" height="104" rx="16" fill="url(#core)" stroke="#b8925a" stroke-width="1.4"/>
+      <circle cx="458" cy="392" r="4.5" fill="#e8c88a"/>
+      <text x="474" y="397" fill="#ffe6b8" font-size="16.5" font-weight="700">习气网络</text>
+      <text x="454" y="423" fill="#c9a76f" font-size="12.5">节点 = 种子 · 边 = 共现 / 因果 / 修正</text>
+      <text x="454" y="445" fill="#c9a76f" font-size="12.5">200ms 一拍：传导 · 侧抑制 · 衰减</text>
+
+      <rect x="450" y="504" width="300" height="76" rx="14" fill="#141b2e" stroke="#2b3550"/>
+      <circle cx="478" cy="528" r="4" fill="#e8c88a"/>
+      <text x="492" y="533" fill="#eef2f8" font-size="15.5" font-weight="600">主念涌现 · 末那识</text>
+      <text x="474" y="558" fill="#8b96ad" font-size="12.5">相对统治力胜出才开口</text>
+
+      <rect x="450" y="616" width="300" height="76" rx="14" fill="#141b2e" stroke="#2b3550"/>
+      <circle cx="478" cy="640" r="4" fill="#6fd3ff"/>
+      <text x="492" y="645" fill="#eef2f8" font-size="15.5" font-weight="600">表达</text>
+      <text x="474" y="670" fill="#8b96ad" font-size="12.5">外部 LLM 流式 → 分句 → TTS 48k</text>
+    </g>
+
+    <!-- 中央竖箭头 -->
+    <g stroke="#6fd3ff" stroke-width="1.4" fill="none" marker-end="url(#arrC)" opacity="0.85">
+      <path d="M600 216 L600 246"/>
+      <path d="M600 328 L600 358"/>
+      <path d="M600 468 L600 498"/>
+      <path d="M600 580 L600 610"/>
+    </g>
+
+    <!-- ============ 左列 ============ -->
+    <g>
+      <rect x="60" y="364" width="290" height="104" rx="14" fill="#111a2b" stroke="#2b3550"/>
+      <text x="82" y="396" fill="#eef2f8" font-size="15" font-weight="600">记忆召回</text>
+      <text x="82" y="421" fill="#8b96ad" font-size="12.5">① 向量反射　② 时间近因　③ 高权重常青</text>
+      <text x="82" y="443" fill="#6d7890" font-size="12">三路融合后沿 co/corr 边整族浮起</text>
+
+      <rect x="60" y="504" width="290" height="76" rx="14" fill="#111a2b" stroke="#2b3550"/>
+      <text x="82" y="532" fill="#eef2f8" font-size="15" font-weight="600">我识 · 末那识三层</text>
+      <text x="82" y="557" fill="#8b96ad" font-size="12.5">core 本体我 / relation 关系我 / mood 当下我</text>
+
+      <rect x="60" y="616" width="290" height="76" rx="14" fill="#111a2b" stroke="#2b3550"/>
+      <text x="82" y="644" fill="#eef2f8" font-size="15" font-weight="600">结生 · 双视角</text>
+      <text x="82" y="669" fill="#8b96ad" font-size="12.5">一次看全 → 你一份我一份</text>
+
+      <rect x="60" y="728" width="290" height="86" rx="14" fill="#1d1a12" stroke="#8a6f3c"/>
+      <text x="82" y="758" fill="#ffe6b8" font-size="15" font-weight="600">熏习</text>
+      <text x="82" y="782" fill="#c9a76f" font-size="12.5">共现建边 · 关联建边 · 读即写复熏</text>
+      <text x="82" y="803" fill="#c9a76f" font-size="12.5">每日半衰 0.5^(天/30) + 过度召回惩罚</text>
+    </g>
+
+    <!-- 网络 → 召回（上层连线，y=392） -->
+    <path d="M430 392 L354 392" stroke="#6fd3ff" stroke-width="1.3" fill="none"
+          marker-end="url(#arrC)" opacity="0.75"/>
+    <!-- 召回 → 主念（走下间隙，y=440） -->
+    <path d="M350 440 L408 440 L408 512 L444 512" stroke="#6fd3ff" stroke-width="1.3" fill="none"
+          marker-end="url(#arrC)" opacity="0.75"/>
+    <!-- 召回 → 我识 -->
+    <path d="M205 468 L205 500" stroke="#6fd3ff" stroke-width="1.3" fill="none"
+          marker-end="url(#arrC)" opacity="0.75"/>
+    <!-- 我识 → 主念 -->
+    <path d="M350 540 L444 540" stroke="#6fd3ff" stroke-width="1.3" fill="none"
+          marker-end="url(#arrC)" opacity="0.75"/>
+
+    <!-- 表达 → 结生 -->
+    <path d="M450 654 L354 654" stroke="#e8c88a" stroke-width="1.3" fill="none"
+          marker-end="url(#arrG)" opacity="0.9"/>
+    <!-- 结生 → 熏习 -->
+    <path d="M205 692 L205 724" stroke="#e8c88a" stroke-width="1.3" fill="none"
+          marker-end="url(#arrG)" opacity="0.9"/>
+    <!-- 熏习 → 习气网络（走卡片之间的空隙，不穿任何卡片） -->
+    <path d="M60 770 C16 770 16 306 96 306 L396 306 L396 404 L428 404"
+          stroke="#e8c88a" stroke-width="1.4" fill="none" stroke-dasharray="7 6"
+          marker-end="url(#arrG)" opacity="0.85"/>
+    <text x="52" y="600" fill="#a98c5b" font-size="11" transform="rotate(-90 52 600)">权重与边回灌</text>
+
+    <!-- ============ 右列 ============ -->
+    <g>
+      <rect x="820" y="364" width="320" height="104" rx="14" fill="#101a2c" stroke="#2b3550"/>
+      <text x="842" y="396" fill="#eef2f8" font-size="15" font-weight="600">阿赖耶识 · 种子库</text>
+      <text x="842" y="421" fill="#8b96ad" font-size="12.5">单表种子容器（五维指纹，内容不可变）</text>
+      <text x="842" y="443" fill="#6d7890" font-size="12">SQLite 单文件 · 向量索引本地落盘</text>
+    </g>
+
+    <g>
+      <rect x="820" y="572" width="320" height="140" rx="14" fill="#101a2c" stroke="#2b3550"/>
+      <text x="842" y="604" fill="#eef2f8" font-size="15" font-weight="600">忆点星光</text>
+      <text x="842" y="629" fill="#8b96ad" font-size="12.5">记忆按人物 / 事件束铺成星图</text>
+      <text x="842" y="651" fill="#8b96ad" font-size="12.5">生成链接，请亲友补全另一半往事</text>
+      <text x="842" y="673" fill="#8b96ad" font-size="12.5">亲友补的那份写进同一个事件束</text>
+    </g>
+
+    <!-- 主干 ↔ 种子库 -->
+    <g stroke="#8fa4c8" stroke-width="1.3" fill="none" opacity="0.6">
+      <path d="M770 416 L816 416" marker-end="url(#arrM)"/>
+      <path d="M816 442 L770 442" marker-end="url(#arrM)"/>
+    </g>
+    <text x="778" y="406" fill="#7b869c" font-size="11">读</text>
+    <text x="778" y="464" fill="#7b869c" font-size="11">写</text>
+
+    <!-- 种子库 → 忆点星光 -->
+    <path d="M980 468 L980 568" stroke="#8fa4c8" stroke-width="1.3" fill="none"
+          marker-end="url(#arrM)" opacity="0.6"/>
+
+    <!-- 图例 -->
+    <g opacity="0.85">
+      <rect x="60" y="830" width="12" height="12" rx="3" fill="#e8c88a"/>
+      <text x="82" y="840" fill="#8b96ad" font-size="12">金色为“熏习回路”：每次对话都会改变网络本身</text>
+      <rect x="470" y="830" width="12" height="12" rx="3" fill="#6fd3ff"/>
+      <text x="492" y="840" fill="#8b96ad" font-size="12">青色为“当下数据流”：一次交互从感知走到出声</text>
+    </g>
+  </g>
+</svg>

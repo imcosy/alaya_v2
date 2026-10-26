@@ -1,0 +1,607 @@
+/* amnesia.css — 忆点星光（H5）深色主题样式：PC/手机自适应，无滚动条，toast/底部弹窗 */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #070b16; color: #e8ecf5; font-size: 15px;
+}
+
+#bg-canvas { position: fixed; inset: 0; z-index: 0; touch-action: none; }
+
+/* 习气网络背景层（对话窗口）：星系层之上、内容层之下；只在对话视图淡入。
+   3D 可交互：与星系图同语言（拖拽旋转 / 滚轮·双指缩放 / 点击星球看记忆）。
+   交互只在「习气网络视图」开启，对话态恢复为纯背景（pointer-events:none）。 */
+#habit-canvas {
+  position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none;
+  opacity: 0; transition: opacity .8s ease; touch-action: none;
+}
+/* 激活由 HabitGraph.setActive() 切 .on 类；明暗一律由这里决定（不在 JS 写内联 opacity） */
+#habit-canvas.on { opacity: 1; }
+/* 对话态：习气网络整体淡化，只作氛围——画面焦点是聊天气泡 */
+body.chat-on #habit-canvas.on { opacity: .45; }
+body.habit-view #habit-canvas { pointer-events: auto; }
+
+#app {
+  position: relative; z-index: 1; height: 100%;
+  max-width: 560px; margin: 0 auto;
+  display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+}
+
+.hidden { display: none !important; }
+
+/* ─── 顶栏 ─────────────────────────────── */
+/* 顶栏无背景色：让星空与习气网络直接透出（背景是意识海，不该被一条色带切断） */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 14px 2px 10px; flex: none;
+}
+.tb-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
+.tb-emoji { font-size: 30px; filter: drop-shadow(0 0 10px rgba(124,108,255,.55)); flex: none; }
+.tb-text { min-width: 0; overflow: hidden; }
+.tb-text h1 { font-size: 20px; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-text p { font-size: 12px; color: #8b93a7; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ghost-btn {
+  background: rgba(124,108,255,.14); color: #b9b0ff; border: 1px solid rgba(124,108,255,.35);
+  border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.ghost-btn:active { background: rgba(124,108,255,.28); }
+
+/* 顶栏右侧按钮组：不参与压缩，标题区自行省略号收缩（避免标题被挤成两行） */
+.tb-btns { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* ─── 星系图 HUD ─────────────────────── */
+/* 统计 chips 与提示语固定在屏幕底部：绝不遮挡顶部标题栏 */
+#galaxy-hud {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  width: 100%; max-width: 560px; z-index: 2; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 16px;
+}
+.stat-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.stat-chips .chip {
+  font-size: 12px; color: #c7cde0; padding: 5px 12px; border-radius: 14px;
+  background: rgba(18,24,42,.75); border: 1px solid rgba(124,108,255,.22);
+  backdrop-filter: blur(4px); white-space: nowrap;
+}
+.stat-chips .chip b { color: #b9b0ff; font-weight: 600; }
+#galaxy-tip { font-size: 11px; color: #7d8598; text-shadow: 0 1px 4px #070b16; }
+#galaxy-hud .ghost-btn { pointer-events: auto; }
+/* 视角 tab 栏（四等分、贴底）：像 App 底部导航，一眼看清当前在哪个视角 */
+#galaxy-view {
+  pointer-events: auto;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  width: 100%; gap: 4px; padding: 5px; box-sizing: border-box;
+  background: rgba(10,14,26,.86);
+  border: 1px solid rgba(124,108,255,.22);
+  border-radius: 16px; backdrop-filter: blur(8px);
+  box-shadow: 0 6px 22px rgba(0,0,0,.38);
+}
+#galaxy-view .tag {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 10px 2px; border-radius: 12px; font-size: 12.5px; line-height: 1;
+  background: transparent; border: 0; color: #8a93a8; cursor: pointer;
+  white-space: nowrap; transition: background .18s, color .18s;
+  -webkit-tap-highlight-color: transparent;
+}
+#galaxy-view .tag.on {
+  background: linear-gradient(135deg, rgba(124,108,255,.95), rgba(167,139,250,.9));
+  color: #fff; box-shadow: 0 3px 12px rgba(124,108,255,.42);
+}
+/* 星系页手势区禁用浏览器默认触摸（页面缩放/滚动抢占） */
+#view-galaxy { touch-action: none; }
+/* 人生脉络视角要能滚动，单独放开手势 */
+#life-threads { touch-action: pan-y; }
+
+/* ─── 视角三·末那识心智涌现中枢（实时念头博弈） ─────────── */
+#manas-hud {
+  width: 100%; max-width: 560px; display: flex; flex-direction: column;
+  align-items: center; gap: 6px; pointer-events: none;
+}
+.manas-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.manas-row .chip {
+  font-size: 12px; color: #c7cde0; padding: 5px 12px; border-radius: 14px;
+  background: rgba(18,24,42,.75); border: 1px solid rgba(124,108,255,.22);
+  backdrop-filter: blur(4px); white-space: nowrap;
+}
+.manas-row .chip b { color: #b9b0ff; font-weight: 600; }
+/* 阈值分层着色：潜意识冷灰 / 显意识暖黄 / 外显炽红（与 habit-graph.js 一致） */
+.chip.manas-layer.sub { border-color: rgba(124,139,184,.5); color: #a7b2d0; }
+.chip.manas-layer.conscious { border-color: rgba(251,191,36,.6); color: #fbbf24; }
+.chip.manas-layer.manifest {
+  border-color: rgba(248,113,113,.7); color: #f87171;
+  box-shadow: 0 0 12px rgba(248,113,113,.35);
+}
+.manas-dom, .manas-traits {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;
+  font-size: 11px; color: #8b93a7; text-shadow: 0 1px 4px #070b16;
+}
+.manas-dom-tip { color: #7d8598; margin-right: 2px; }
+.manas-dom-item {
+  padding: 3px 9px; border-radius: 11px; color: #d7def0;
+  background: rgba(248,113,113,.14); border: 1px solid rgba(248,113,113,.4);
+}
+.manas-dom-item b { color: #fca5a5; font-weight: 600; }
+.manas-trait {
+  padding: 3px 9px; border-radius: 11px; color: #cdd5ea;
+  background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.32);
+}
+.manas-trait b { color: #6ee7b7; font-weight: 600; }
+/* 中枢视角：习气网络全亮并接管指针 */
+body.manas-view #habit-canvas { opacity: 1; pointer-events: auto; }
+body.manas-view #bg-canvas { opacity: .12; }
+
+/* ─── 视角二·人生脉络（待补全的记忆篇章） ─────────────── */
+#life-threads {
+  flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 2px 2px calc(168px + env(safe-area-inset-bottom));
+}
+#life-threads::-webkit-scrollbar { display: none; }
+.lt-head { font-size: 12px; color: #8b93a7; text-align: center; margin-bottom: 2px; }
+.lt-card {
+  background: rgba(18,24,42,.74); border: 1px solid rgba(124,108,255,.18);
+  border-radius: 14px; padding: 12px 14px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  transition: border-color .18s, background .18s;
+}
+#life-threads.can-recall .lt-card { cursor: pointer; }
+#life-threads.can-recall .lt-card:active { background: rgba(124,108,255,.16); }
+.lt-card.done { border-color: rgba(52,211,153,.3); }
+.lt-card.focus { border-color: rgba(251,191,36,.55); box-shadow: 0 0 18px rgba(251,191,36,.14); }
+.lt-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lt-top b { font-size: 16px; color: #e8ecf5; }
+.lt-top .lt-sub { font-size: 12px; color: #8b93a7; }
+.lt-top .lt-n { margin-left: auto; font-size: 12px; color: #b9b0ff; white-space: nowrap; }
+.lt-card.done .lt-n { color: #34d399; }
+.lt-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: rgba(251,191,36,.16); color: #fbbf24; border: 1px solid rgba(251,191,36,.35);
+}
+.lt-topics { font-size: 12px; color: #7d8598; margin-top: 6px; line-height: 1.6; }
+.lt-last {
+  font-size: 12px; color: #c7cde0; margin-top: 7px; line-height: 1.55;
+  border-left: 2px solid rgba(124,108,255,.35); padding-left: 8px;
+}
+.lt-go { font-size: 12px; color: #8f7bff; margin-top: 7px; }
+/* 人生脉络视角：星系整体压暗，突出篇章列表 */
+body.life-view #bg-canvas { opacity: .16; }
+body.life-view #habit-canvas { opacity: 0; }
+
+/* ─── 星球详情弹窗 ────────────────────── */
+.node-head { display: flex; align-items: center; gap: 10px; }
+.node-head h3 { font-size: 17px; }
+.node-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: 0 0 12px currentColor; }
+textarea {
+  width: 100%; background: rgba(7,11,22,.7); border: 1px solid rgba(124,108,255,.25);
+  border-radius: 12px; padding: 11px 13px; color: #e8ecf5; font-size: 15px; outline: none;
+  font-family: inherit; resize: none;
+}
+textarea:focus { border-color: rgba(124,108,255,.6); }
+textarea::placeholder { color: #5d6579; }
+.tab-row { display: flex; gap: 8px; flex: none; }
+.tab {
+  padding: 8px 18px; border-radius: 18px; font-size: 14px; cursor: pointer;
+  background: rgba(7,11,22,.7); border: 1px solid rgba(124,108,255,.25); color: #c7cde0;
+}
+.tab.on { background: linear-gradient(135deg, #7c6cff, #a78bfa); color: #fff; border-color: transparent; }
+.tab-page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 10px; }
+.tab-page::-webkit-scrollbar { display: none; }
+.btn-row { display: flex; gap: 10px; flex: none; }
+.btn-row .primary-btn { flex: 1; }
+.danger-btn {
+  border: none; border-radius: 14px; padding: 13px 18px;
+  background: rgba(255,92,92,.16); color: #ff9c9c; border: 1px solid rgba(255,92,92,.4);
+  font-size: 15px; cursor: pointer; white-space: nowrap;
+}
+.danger-btn:active { background: rgba(255,92,92,.3); }
+.mem-item {
+  background: rgba(7,11,22,.55); border: 1px solid rgba(124,108,255,.14);
+  border-radius: 12px; padding: 11px 13px;
+}
+.mem-item .mv { font-size: 14px; line-height: 1.55; }
+.mem-item .mm { font-size: 11px; color: #7d8598; margin-top: 5px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mem-item .mm .who { color: #b9b0ff; }
+.mem-item .mm.ev { color: #6b7488; margin-top: 3px; }
+
+/* tab 徽标（挂载记忆数 / 子节点数） */
+.tab .tab-n {
+  display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px;
+  font-size: 11px; line-height: 17px; border-radius: 9px; text-align: center;
+  background: rgba(124,108,255,.2); color: #b9b0ff; font-weight: 600;
+}
+.tab.on .tab-n { background: rgba(255,255,255,.25); color: #fff; }
+
+/* 记忆卡片操作行：取消关联（卸载不删）/ 修改 / 删除，三者语义分明 */
+.mem-item .mm .acts { display: inline-flex; gap: 12px; margin-left: auto; }
+.mem-act { font-size: 11px; text-decoration: none; cursor: pointer; }
+.mem-act:active { text-decoration: underline; }
+.mem-act.detach { color: #8b93a7; }
+.mem-act.edit { color: #b9b0ff; }
+.mem-act.del { color: #ff9c9c; }
+
+/* 记忆内联编辑表单（事实修正） */
+.mem-item .mem-edit-val, .mem-item .mem-edit-subject { width: 100%; }
+.mem-item .mem-edit-val { min-height: 62px; }
+.mem-edit-btns { display: flex; gap: 10px; margin-top: 8px; }
+.mem-edit-btns .ghost-btn { flex: 1; }
+
+/* 子节点 chips（点击下钻） */
+.kid-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.kid-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(124,108,255,.1); border: 1px solid rgba(124,108,255,.32);
+  color: #d5d9ea; border-radius: 18px; padding: 8px 15px; font-size: 14px; cursor: pointer;
+}
+.kid-chip:active { background: rgba(124,108,255,.3); }
+.kid-chip i {
+  font-style: normal; font-size: 11px; color: #b9b0ff;
+  background: rgba(7,11,22,.6); border-radius: 9px; padding: 1px 7px;
+}
+
+/* 添加关联面板：候选记忆勾选列表 */
+#attach-panel { display: flex; flex-direction: column; gap: 10px; }
+#attach-panel .attach-list { max-height: 40vh; display: flex; flex-direction: column; gap: 8px; }
+.attach-item {
+  display: flex; align-items: flex-start; gap: 9px;
+  background: rgba(7,11,22,.55); border: 1px solid rgba(124,108,255,.14);
+  border-radius: 12px; padding: 10px 12px; cursor: pointer;
+}
+.attach-item input { flex: none; width: 17px; height: 17px; margin-top: 2px; accent-color: #7c6cff; }
+.attach-item b { flex: 1; min-width: 0; font-size: 13px; font-weight: normal; line-height: 1.5; }
+.attach-item .ai { flex: none; font-size: 11px; color: #b9b0ff; }
+.attach-item i { flex: none; font-style: normal; font-size: 11px; color: #7d8598; }
+.attach-item.done { opacity: .45; }
+#mem-actions { flex: none; }
+#newkid-panel { display: flex; flex-direction: column; gap: 10px; }
+
+/* ─── 视图与卡片 ────────────────────────── */
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.card {
+  background: rgba(18,24,42,.82); border: 1px solid rgba(124,108,255,.18);
+  border-radius: 16px; padding: 16px;
+}
+.intro-card { line-height: 1.7; color: #c7cde0; font-size: 14px; }
+.intro-card b { color: #b9b0ff; }
+.sec-title { font-size: 14px; color: #8b93a7; margin: 6px 2px 0; font-weight: normal; }
+
+.form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+input {
+  flex: 1; min-width: 0; background: rgba(7,11,22,.7); border: 1px solid rgba(124,108,255,.25);
+  border-radius: 12px; padding: 11px 13px; color: #e8ecf5; font-size: 15px; outline: none;
+}
+input:focus { border-color: rgba(124,108,255,.6); }
+input::placeholder { color: #5d6579; }
+
+.primary-btn {
+  width: 100%; border: none; border-radius: 14px; padding: 13px;
+  background: linear-gradient(135deg, #7c6cff, #a78bfa); color: #fff;
+  font-size: 16px; font-weight: 600; cursor: pointer; letter-spacing: 1px;
+}
+.primary-btn.big { padding: 15px; }
+.primary-btn:active { opacity: .85; }
+.primary-btn[disabled] { opacity: .5; }
+
+/* ─── 邀请列表 ──────────────────────────── */
+.list { overflow-y: auto; scrollbar-width: none; }
+.list::-webkit-scrollbar { display: none; }
+.invite-item {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(18,24,42,.82); border: 1px solid rgba(124,108,255,.14);
+  border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+}
+.invite-item .who { flex: 1; min-width: 0; }
+.invite-item .who b { font-size: 15px; }
+.invite-item .who p { font-size: 12px; color: #8b93a7; margin-top: 3px; }
+.badge {
+  font-size: 11px; padding: 3px 10px; border-radius: 10px; white-space: nowrap;
+}
+.badge.pending { background: rgba(255,183,77,.15); color: #ffce85; }
+.badge.accepted { background: rgba(86,220,153,.15); color: #7fe6b1; }
+.copy-btn {
+  background: rgba(124,108,255,.14); color: #b9b0ff; border: none;
+  border-radius: 12px; padding: 7px 13px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+
+/* ─── 邀请卡（B视图） ───────────────────── */
+.invite-card { text-align: center; padding: 26px 18px; }
+.invite-ai { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ai-avatar {
+  width: 76px; height: 76px; display: flex; align-items: center; justify-content: center;
+  font-size: 44px; border-radius: 50%;
+  background: rgba(124,108,255,.14); border: 2px solid rgba(124,108,255,.4);
+  box-shadow: 0 0 26px rgba(124,108,255,.28);
+}
+.inv-ai-name { font-size: 18px; font-weight: 600; }
+.inv-desc { color: #aeb6c9; line-height: 1.8; margin: 14px 0 18px; font-size: 14px; }
+.inv-desc b { color: #b9b0ff; }
+.ok-line { color: #7fe6b1; padding: 8px 0; }
+
+/* ─── 对话视图 ──────────────────────────── */
+#view-chat { gap: 0; }
+#chat-list {
+  flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;
+  padding: 6px 2px 8px; display: flex; flex-direction: column; gap: 10px;
+}
+#chat-list::-webkit-scrollbar { display: none; }
+
+.bubble {
+  max-width: 78%; padding: 10px 14px; border-radius: 16px;
+  line-height: 1.6; font-size: 15px; word-break: break-word; white-space: pre-wrap;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.bubble.me { align-self: flex-end; background: rgba(106,92,255,.55); border: 1px solid rgba(143,123,255,.4); border-bottom-right-radius: 5px; }
+.bubble.ai { align-self: flex-start; background: rgba(18,24,42,.55); border: 1px solid rgba(124,108,255,.22); border-bottom-left-radius: 5px; }
+.bubble.sys { align-self: center; background: none; color: #7d8598; font-size: 12px; padding: 2px; backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+#chat-status { text-align: center; font-size: 12px; color: #7d8598; padding: 4px 0; flex: none; }
+
+#chat-bar {
+  flex: none; display: flex; align-items: center; justify-content: center; gap: 22px;
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+}
+/* 两侧素材图标：相册照片 / 文件 */
+.side-btn {
+  width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(124,108,255,.4);
+  background: rgba(124,108,255,.12); font-size: 21px; cursor: pointer; flex: none;
+  transition: transform .15s;
+}
+.side-btn:active { transform: scale(.9); }
+/* 大录音按钮：状态机载体（复刻 sisi_app 色彩语言） */
+.mic-main {
+  width: 76px; height: 76px; border-radius: 50%; border: none; flex: none;
+  position: relative; cursor: pointer; overflow: hidden;
+  background: radial-gradient(circle at 50% 38%, #8f7cff, #5b4bd4);
+  box-shadow: 0 0 24px rgba(124,108,255,.45);
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  transition: box-shadow .25s, background .25s;
+}
+.mic-main i {
+  width: 6px; border-radius: 3px; background: rgba(255,255,255,.92); height: 14px;
+  animation: mic-idle 2.4s ease-in-out infinite;
+}
+.mic-main i:nth-child(2) { animation-delay: .2s; }
+.mic-main i:nth-child(3) { animation-delay: .4s; }
+@keyframes mic-idle { 0%,100% { height: 12px; opacity: .55; } 50% { height: 22px; opacity: 1; } }
+/* 聆听中：绿色波纹 */
+.mic-main.listening {
+  background: radial-gradient(circle at 50% 38%, #34d399, #059669);
+  box-shadow: 0 0 30px rgba(52,211,153,.55);
+}
+.mic-main.listening i { animation: pulse 1s ease-in-out infinite; height: 22px; }
+@keyframes pulse { 0%,100% { height: 10px; opacity: .6; } 50% { height: 26px; opacity: 1; } }
+/* 思考中：琥珀色慢闪 */
+.mic-main.thinking {
+  background: radial-gradient(circle at 50% 38%, #fbbf24, #d97706);
+  box-shadow: 0 0 26px rgba(251,191,36,.5);
+}
+.mic-main.thinking i { animation: mic-idle 1s ease-in-out infinite; }
+/* 说话中：天蓝声纹跳动 */
+.mic-main.speaking {
+  background: radial-gradient(circle at 50% 38%, #38bdf8, #0284c7);
+  box-shadow: 0 0 30px rgba(56,189,248,.55);
+}
+.mic-main.speaking i { animation: pulse .55s ease-in-out infinite; height: 24px; }
+
+/* ─── 忆点星光：人物星云 → 事件星 ───────────────────────── */
+/* 自己的画布独立绘制（暗星微呼吸、亮星闪烁需要持续重绘），进这个视角就藏掉 3D 星系底图 */
+/* 星图画布在 #app 的层叠上下文里：z-index 必须低于顶栏与 HUD，
+   否则全屏画布会盖住 #topbar（static 定位），顶栏按钮点不到 */
+#stars-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+body.stars-view #bg-canvas { display: none; }
+#topbar { position: relative; z-index: 2; }
+#stars-hud { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+#stars-hud .chip { font-size: 12px; }
+#stars-hud .ghost-btn { font-size: 12px; padding: 5px 10px; }
+/* 转发弹窗 */
+.share-link {
+  word-break: break-all; background: rgba(255,255,255,.06); border-radius: 10px;
+  padding: 10px 12px; font-size: 12px; color: #9fd0ff; margin: 10px 0; line-height: 1.6;
+}
+.primary-btn {
+  width: 100%; padding: 12px; border-radius: 12px; border: 0; cursor: pointer;
+  background: linear-gradient(135deg, #ffb347, #ff8a3d); color: #2a1a00;
+  font-weight: 600; font-size: 15px;
+}
+.primary-btn:active { transform: scale(.98); }
+/* ─── 补星弹窗：微信式聊天（消息区滚动 · 输入栏置底） ─────────── */
+.sheet.star-chat {
+  display: flex; flex-direction: column;
+  height: 84vh; max-height: 84vh; padding-bottom: 0;
+}
+.sheet.star-chat h3, .sheet.star-chat #star-sub { flex: none; }
+.chat-msgs {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 9px; padding: 10px 2px 12px;
+}
+.chat-msgs .msg {
+  max-width: 78%; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.55;
+  word-break: break-word; white-space: pre-wrap;
+}
+.chat-msgs .msg.ai {
+  align-self: flex-start; background: rgba(255,255,255,.10); color: rgba(255,255,255,.94);
+  border-bottom-left-radius: 4px;
+}
+.chat-msgs .msg.me {
+  align-self: flex-end; background: linear-gradient(135deg, #7c6cff, #a78bfa); color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.chat-msgs .msg.typing { color: rgba(255,255,255,.5); letter-spacing: 3px; }
+/* 输入栏（置底）：左「切换语音/键盘」· 中长条语音或输入框 · 右「发照片」 */
+.chat-bar {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 8px 2px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.chat-icon {
+  flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(255,255,255,.08); color: #dfe3ee; font-size: 17px; line-height: 1;
+}
+.chat-icon:active { transform: scale(.94); }
+.chat-voice {
+  flex: 1 1 auto; height: 38px; border-radius: 19px; user-select: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.14);
+  color: #dfe3ee; font-size: 14px; touch-action: none;
+}
+.chat-voice.rec { background: rgba(52,211,153,.22); border-color: rgba(52,211,153,.5); color: #a7f3d0; }
+.chat-voice.cancel { background: rgba(248,113,113,.22); border-color: rgba(248,113,113,.5); color: #fecaca; }
+.chat-input {
+  flex: 1 1 auto; height: 38px; border-radius: 19px; padding: 0 14px; font-size: 14px;
+  background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.14); color: #fff; outline: none;
+}
+.chat-send {
+  flex: none; height: 36px; padding: 0 16px; border-radius: 18px; border: 0; cursor: pointer;
+  background: linear-gradient(135deg, #7c6cff, #a78bfa); color: #fff; font-size: 14px;
+}
+
+/* ─── 底部弹窗 ──────────────────────────── */
+.mask {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(4,6,12,.6); backdrop-filter: blur(3px);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet {
+  width: 100%; max-width: 560px; max-height: 82vh;
+  background: #131a2c; border-radius: 20px 20px 0 0;
+  border-top: 1px solid rgba(124,108,255,.25);
+  padding: 22px 18px calc(20px + env(safe-area-inset-bottom));
+  position: relative; display: flex; flex-direction: column; gap: 12px;
+  animation: slideup .25s ease;
+}
+.sheet.tall { height: 82vh; }
+@keyframes slideup { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
+.sheet-close {
+  position: absolute; top: 14px; right: 14px; width: 30px; height: 30px;
+  border-radius: 50%; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06); color: #aeb6c9; font-size: 14px; cursor: pointer;
+}
+.sheet h3 { font-size: 17px; }
+.field-label { font-size: 13px; color: #8b93a7; line-height: 1.55; }
+/* 弹窗内表单控件：统一盒模型与宽度（弹窗内 input 不参与 flex 拉伸，避免样式错乱） */
+.sheet input,
+.sheet textarea {
+  display: block; width: 100%; flex: none;
+  background: rgba(7,11,22,.7); border: 1px solid rgba(124,108,255,.25);
+  border-radius: 12px; padding: 11px 13px; color: #e8ecf5;
+  font-size: 15px; font-family: inherit; outline: none;
+}
+.sheet input:focus, .sheet textarea:focus { border-color: rgba(124,108,255,.6); }
+.sheet input::placeholder, .sheet textarea::placeholder { color: #5d6579; }
+.sheet input[disabled] { color: #6b7488; background: rgba(7,11,22,.45); }
+.sheet textarea { resize: none; line-height: 1.6; }
+
+/* 素材菜单（底部弹窗） */
+.menu-list { display: flex; flex-direction: column; gap: 10px; }
+.menu-item {
+  display: flex; align-items: center; gap: 13px; width: 100%; text-align: left;
+  background: rgba(7,11,22,.55); border: 1px solid rgba(124,108,255,.18);
+  border-radius: 14px; padding: 13px 15px; color: #e8ecf5; font-size: 15px; cursor: pointer;
+}
+.menu-item:active { background: rgba(124,108,255,.2); }
+.menu-item .mi-emoji { font-size: 24px; flex: none; }
+.menu-item .mi-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.menu-item .mi-text small { font-size: 12px; color: #8b93a7; }
+
+.tag-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag {
+  padding: 8px 16px; border-radius: 18px; font-size: 14px; cursor: pointer;
+  background: rgba(7,11,22,.7); border: 1px solid rgba(124,108,255,.25); color: #c7cde0;
+}
+.tag.on { background: linear-gradient(135deg, #7c6cff, #a78bfa); color: #fff; border-color: transparent; }
+
+/* ─── 找回记忆列表 ──────────────────────── */
+.recover-item {
+  background: rgba(7,11,22,.55); border: 1px solid rgba(124,108,255,.14);
+  border-radius: 12px; padding: 11px 13px; margin-bottom: 9px;
+}
+.recover-item b { font-size: 13px; color: #b9b0ff; }
+.recover-item p { font-size: 14px; margin-top: 3px; line-height: 1.55; }
+.recover-item .evi { font-size: 11px; color: #7d8598; margin-top: 5px; }
+.empty-tip { text-align: center; color: #7d8598; font-size: 13px; padding: 30px 0; }
+
+/* ─── 粘贴文字弹窗（聊天记录 / 日记，textarea 撑满可滚） ─── */
+.sheet textarea.text-input { flex: 1; min-height: 0; overflow-y: auto; }
+.text-foot { flex: none; display: flex; align-items: center; gap: 12px; }
+.text-foot #text-count { font-size: 12px; color: #8b93a7; flex: none; }
+.text-foot .primary-btn { width: auto; flex: 1; }
+
+/* ─── toast（居中半透明遮罩样式） ────────── */
+#toast {
+  position: fixed; left: 50%; top: 45%; transform: translate(-50%,-50%); z-index: 200;
+  background: rgba(10,14,26,.85); color: #e8ecf5; font-size: 14px;
+  padding: 13px 22px; border-radius: 12px; border: 1px solid rgba(124,108,255,.3);
+  max-width: 76%; text-align: center; line-height: 1.5; backdrop-filter: blur(4px);
+}
+
+/* ─── 摄像头画面层（亲友找回对话：铺满页面背景，星系隐藏） ─── */
+#cam-layer { position: fixed; inset: 0; z-index: 0; background: #070b16; }
+#cam-video { width: 100%; height: 100%; object-fit: cover; }
+
+/* ─── 摄像头态：星系节点全部隐藏，画面成为唯一背景（气泡半透明浮动其上） ─── */
+#bg-canvas { transition: opacity .35s ease; }
+body.cam-on #bg-canvas, body.cam-on #habit-canvas { opacity: 0; }
+
+/* ─── 对话态：星系节点整体淡化，气泡半透明浮动于画面之上 ─── */
+body.chat-on #bg-canvas { opacity: .28; }
+/* 习气网络在对话态退为纯背景（淡化规则见文件顶部 #habit-canvas），交互交还给气泡层 */
+body.chat-on #habit-canvas { pointer-events: none; }
+body.chat-on #view-chat { gap: 12px; }
+body.chat-on .bubble {
+  backdrop-filter: blur(14px) saturate(1.25); -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  box-shadow: 0 6px 22px rgba(4,8,20,.4);
+}
+body.chat-on .bubble.me { background: rgba(106,92,255,.42); }
+body.chat-on .bubble.ai { background: rgba(14,20,38,.42); }
+
+#btn-cam.on { background: rgba(239,68,68,.22); border-color: rgba(239,68,68,.55); }
+
+/* ─── 用户资料弹窗 ─── */
+.user-head { display: flex; align-items: center; gap: 14px; }
+.user-ai-line {
+  background: rgba(124,108,255,.12); border: 1px solid rgba(124,108,255,.28);
+  border-radius: 10px; padding: 9px 13px; font-size: 13px; color: #b9b0ff;
+}
+.user-face { width: 58px; height: 58px; border-radius: 50%; object-fit: cover; flex: none; }
+.user-face--ph {
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(124,108,255,.14); border: 2px solid rgba(124,108,255,.4); font-size: 26px;
+}
+.user-head-text h3 { font-size: 18px; }
+.user-head-text p { margin-top: 2px; }
+
+/* 声音列表 */
+.voice-item {
+  display: flex; align-items: center; gap: 11px;
+  background: rgba(7,11,22,.55); border: 1px solid rgba(124,108,255,.14);
+  border-radius: 12px; padding: 10px 12px; margin-bottom: 9px;
+}
+.voice-item .v-emoji { font-size: 23px; flex: none; }
+.voice-item .v-info { min-width: 0; }
+.voice-item .v-name { font-size: 14px; font-weight: 600; }
+.voice-item .v-tag { font-size: 11px; color: #8b93a7; margin-top: 2px; }
+.voice-item .v-acts { margin-left: auto; display: flex; gap: 8px; flex: none; }
+.voice-item .v-acts .ghost-btn { font-size: 12px; padding: 5px 12px; }
+
+/* 形象照九宫格 */
+.face-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.face-item {
+  position: relative; border-radius: 12px; overflow: hidden;
+  border: 1px solid rgba(124,108,255,.2); aspect-ratio: 1; background: rgba(7,11,22,.55);
+}
+.face-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.face-item .face-desc {
+  position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; line-height: 1.35;
+  color: #c7cde0; background: rgba(4,6,12,.78); padding: 3px 5px; max-height: 34px; overflow: hidden;
+}
+.face-item .face-del {
+  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%;
+  border: none; background: rgba(4,6,12,.75); color: #ff9c9c; font-size: 12px; cursor: pointer;
+}
+
+@media (min-width: 700px) {
+  #app { padding-top: 26px; }
+  .tb-text h1 { font-size: 24px; }
+}

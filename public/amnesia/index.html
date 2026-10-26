@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>忆点星光</title>
+  <!-- 资源一律用相对路径：本页部署在 nginx /alaya/amnesia/ 前缀下，写死根绝对路径会 404 -->
+  <link rel="stylesheet" href="amnesia.css?v=20261003g">
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+  <!-- 习气网络背景层：对话窗口下显示真实记忆网络（节点+关联边+突触脉冲） -->
+  <canvas id="habit-canvas"></canvas>
+
+  <!-- 摄像头画面层：说话时铺满页面背景，星系隐藏，对话气泡半透明浮动其上 -->
+  <div id="cam-layer" class="hidden">
+    <video id="cam-video" playsinline autoplay muted></video>
+  </div>
+
+  <div id="app">
+    <!-- 顶栏 -->
+    <header id="topbar">
+      <div class="tb-left">
+        <span class="tb-emoji">✨</span>
+        <div class="tb-text">
+          <h1>忆点星光</h1>
+          <p id="tb-sub">你们之间的事，一颗颗点亮</p>
+        </div>
+      </div>
+    <div class="tb-btns">
+      <button id="btn-ais" class="ghost-btn hidden" title="切换对话角色">🎭</button>
+      <button id="btn-user" class="ghost-btn" title="我的资料">👤</button>
+      <button id="btn-invites" class="ghost-btn hidden">✉ 邀请</button>
+      <button id="btn-chat" class="ghost-btn hidden">💬 找回对话</button>
+      <button id="btn-recovered" class="ghost-btn hidden">🧩 <span id="recovered-count">0</span></button>
+    </div>
+  </header>
+
+  <!-- 星系图首页：大脑居中 + 记忆星球散落周边（canvas 全屏） -->
+  <section id="view-galaxy" class="view hidden">
+    <!-- 忆点星光：人物星云 → 事件星（一颗星＝一件你们之间的事，暗＝待亲友来点） -->
+    <canvas id="stars-canvas" class="hidden"></canvas>
+    <!-- 视角二·人生脉络：待补全的记忆篇章（与习气网络同一批底层种子，只是换一个投影看） -->
+    <div id="life-threads" class="hidden"></div>
+    <div id="galaxy-hud">
+      <div id="galaxy-stats" class="stat-chips"></div>
+      <!-- 末那识中枢 HUD：实时 tick / 阈值分层 / 主念集群 / 人格特质 -->
+      <div id="manas-hud" class="hidden">
+        <div class="manas-row">
+          <span class="chip">心跳 <b id="manas-tick">0</b></span>
+          <span class="chip" id="manas-layer-chip">潜意识</span>
+          <span class="chip">主念强度 <b id="manas-act">0.000</b></span>
+          <span class="chip">统治力 <b id="manas-dom-power">0.00</b></span>
+          <span class="chip">静默 <b id="manas-silence">0</b> 拍</span>
+        </div>
+        <div id="manas-dominant" class="manas-dom"></div>
+        <div id="manas-traits" class="manas-traits"></div>
+      </div>
+      <div id="stars-hud" class="hidden">
+        <span class="chip" id="stars-scope">人物星云</span>
+        <span class="chip">共 <b id="stars-total">0</b> 颗 · 亮 <b id="stars-lit">0</b></span>
+        <button id="btn-stars-organize" class="ghost-btn">✨ 让如意梳理人物</button>
+      </div>
+      <button id="btn-galaxy-back" class="ghost-btn hidden">↺ 返回全景</button>
+      <div id="galaxy-tip">拖动旋转 · 滚轮缩放 · 双击星球进入主视角</div>
+      <!-- 视角 tab 栏（四等分，固定最底）：忆点星光 / 习气网络 / 人生脉络 / 末那识中枢 -->
+      <div id="galaxy-view" class="tag-row">
+        <span class="tag on" data-gview="stars">✨ 忆点星光</span>
+        <span class="tag" data-gview="network">🌌 习气网络</span>
+        <span class="tag" data-gview="threads">🧭 人生脉络</span>
+        <span class="tag" data-gview="manas">🧠 末那识中枢</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- A视图：未登录时的简介 + 内嵌登录 -->
+  <section id="view-home" class="view hidden">
+    <div class="card intro-card">
+      <p>每个人记得的，都只是往事的一半。</p>
+      <p>把另一半的<b>往事</b>，交给你在意的人来补全——你们之间的事，一颗颗点亮。</p>
+    </div>
+
+    <!-- 未登录：内嵌登录 -->
+    <div id="home-login" class="card">
+      <h3>先登录</h3>
+      <div class="form-row">
+        <input id="login-phone" type="text" maxlength="32" placeholder="用户名" autocomplete="username">
+      </div>
+      <div class="form-row">
+        <input id="login-code" type="password" maxlength="64" placeholder="密码">
+        <button id="btn-code" class="ghost-btn" style="display:none">获取验证码</button>
+      </div>
+      <button id="btn-login" class="primary-btn"><span>登 录</span></button>
+    </div>
+  </section>
+
+    <!-- B视图：接受邀请（有 token） -->
+    <section id="view-accept" class="view hidden">
+      <div class="card invite-card">
+        <div class="invite-ai">
+          <span id="inv-ai-avatar" class="ai-avatar">🧠</span>
+          <div class="inv-ai-name" id="inv-ai-name">…</div>
+        </div>
+        <p id="inv-desc" class="inv-desc">正在加载邀请…</p>
+        <div id="accept-box" class="hidden">
+          <button id="btn-accept" class="primary-btn big"><span>接受邀请，帮TA找回记忆</span></button>
+        </div>
+        <div id="accept-ok" class="hidden">
+          <p class="ok-line">✓ 已接受，正在进入找回对话…</p>
+          <button id="btn-goto-galaxy" class="ghost-btn">🌌 先看看TA的星系</button>
+        </div>
+      </div>
+      <!-- 未登录：内嵌登录 -->
+      <div id="accept-login" class="card hidden">
+        <h3>先登录，再接受邀请</h3>
+        <div class="form-row">
+          <input id="login-phone2" type="text" maxlength="32" placeholder="用户名" autocomplete="username">
+        </div>
+        <div class="form-row">
+          <input id="login-code2" type="password" maxlength="64" placeholder="密码">
+          <button id="btn-code2" class="ghost-btn" style="display:none">获取验证码</button>
+        </div>
+        <button id="btn-login2" class="primary-btn"><span>登 录</span></button>
+      </div>
+    </section>
+
+    <!-- 对话视图：找回对话 -->
+    <section id="view-chat" class="view hidden">
+      <div id="chat-list"></div>
+      <div id="chat-status">点麦克风开始对话</div>
+      <div id="chat-bar">
+        <button id="btn-album" class="side-btn" title="相册：照片 / PDF / Word / PPT / 文本">📷</button>
+        <button id="btn-mic" class="mic-main" title="录音对话"><i></i><i></i><i></i></button>
+        <button id="btn-cam" class="side-btn" title="摄像头：让TA看到你眼前的场景（双击切换前后置）">📹</button>
+      </div>
+      <!-- 相册：图片与文档同一入口（照片压缩到500k以内再发送） -->
+      <input type="file" id="file-photo" accept="image/*" class="hidden">
+      <input type="file" id="file-doc" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.md" class="hidden">
+    </section>
+  </div>
+
+  <input type="file" id="file-face" accept="image/*" class="hidden">
+
+  <!-- 底部弹窗：邀请管理 -->
+  <div id="dlg-invites" class="mask hidden">
+    <div class="sheet">
+      <button class="sheet-close">✕</button>
+      <h3>我的找回邀请</h3>
+      <button id="btn-new-invite" class="primary-btn"><span>＋ 创建找回邀请</span></button>
+      <div id="invite-list" class="list"></div>
+    </div>
+  </div>
+
+  <!-- 底部弹窗：创建邀请 -->
+  <div id="dlg-invite" class="mask hidden">
+    <div class="sheet">
+      <button class="sheet-close">✕</button>
+      <h3>创建找回邀请</h3>
+      <p class="field-label">TA是你的（点选）</p>
+      <div id="rel-tags" class="tag-row"></div>
+      <input id="rel-custom" class="hidden" placeholder="输入你们的关系" maxlength="12">
+      <p class="field-label">你怎么称呼TA</p>
+      <input id="addr-term" placeholder="如：小美、用户" maxlength="12">
+      <p class="field-label">TA怎么称呼你（你的AI本体）</p>
+      <input id="self-term" placeholder="如：阿飞、老弟" maxlength="12">
+      <button id="btn-create-invite" class="primary-btn"><span>生成邀请链接</span></button>
+    </div>
+  </div>
+
+  <!-- 底部弹窗：找回的记忆 -->
+  <div id="dlg-recovered" class="mask hidden">
+    <div class="sheet tall">
+      <button class="sheet-close">✕</button>
+      <h3>找回的记忆</h3>
+      <div id="recovered-list" class="list"></div>
+    </div>
+  </div>
+
+  <!-- 底部弹窗：寻忆邀请（系统AI如意提到某个人物后，用户同意 → 填表转发给TA） -->
+  <div id="dlg-recall" class="mask hidden">
+    <div class="sheet tall">
+      <button class="sheet-close">✕</button>
+      <h3>请TA来帮你找回记忆</h3>
+      <p class="field-label" id="recall-hint">填好下面几项，生成一条寻忆链接转发给TA——TA打开后就能陪你聊起那些共同的往事。</p>
+      <p class="field-label">TA是你的（点选）</p>
+      <div id="recall-rel-tags" class="tag-row"></div>
+      <input id="recall-rel-custom" class="hidden" placeholder="输入你们的关系" maxlength="12">
+      <p class="field-label">你怎么称呼TA</p>
+      <input id="recall-addr" placeholder="如：小美、用户" maxlength="12">
+      <p class="field-label">TA怎么称呼你（你的AI本体）</p>
+      <input id="recall-self" placeholder="如：阿飞、老弟" maxlength="12">
+      <button id="btn-recall-create" class="primary-btn"><span>生成寻忆链接并转发</span></button>
+    </div>
+  </div>
+
+  <!-- 底部弹窗：切换对话角色（亲友的AI本体 / 系统AI如意 / 自己的AI本体） -->
+  <div id="dlg-ais" class="mask hidden">
+    <div class="sheet tall">
+      <button class="sheet-close">✕</button>
+      <h3>切换对话角色</h3>
+      <p class="field-label">点选一个AI本体与TA对话——TA会围绕「让你帮TA恢复记忆」展开，并知道该怎么称呼你</p>
+      <div id="ais-list" class="list"></div>
+    </div>
+  </div>
+
+  <!-- 底部弹窗：记忆详情 —— 本人=记忆修正/删除；亲友=转发给亲友帮找回 -->
+  <div id="dlg-node" class="mask hidden">
+    <div class="sheet tall">
+      <button class="sheet-close">✕</button>
+      <div class="node-head">
+        <span id="node-dot" class="node-dot"></span>
+        <div>
+          <h3 id="node-title">记忆</h3>
+          <p id="node-sub" class="field-label"></p>
+        </div>
+      </div>
+
+      <!-- 亲友：转发表单 -->
+      <div id="node-forward" class="hidden">
+        <p class="field-label">附言（会一起发给TA）</p>
+        <textarea id="fwd-message" rows="3" maxlength="200" placeholder="这个方向我还记得一些事，收到后跟我聊聊呗"></textarea>
+        <p class="field-label">转发给（选填）</p>
+        <input id="fwd-to" placeholder="如：大姨、老同学老王" maxlength="16">
+        <button id="btn-forward" class="primary-btn"><span>生成转发链接</span></button>
+      </div>
+
+      <!-- 本人：记忆本体（修正 / 删除） -->
+      <div id="node-self" class="hidden">
+        <div id="node-mem-list" class="list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 忆点星光·补星弹窗：像聊天一样把你知道的讲出来（AI 一直引导，够了就把星点亮，可能不止一颗） -->
+  <div id="dlg-star" class="mask hidden">
+    <div class="sheet tall star-chat">
+      <button class="sheet-close">✕</button>
+      <h3 id="star-title">这一颗星</h3>
+      <p id="star-sub" class="empty-tip"></p>
+      <div id="star-msgs" class="chat-msgs"></div>
+      <!-- 输入栏（默认长条语音：按住说话、松开提交、上滑取消） -->
+      <div class="chat-bar">
+        <button id="star-mode" class="chat-icon" title="切换语音 / 键盘">🎤</button>
+        <div id="star-voice" class="chat-voice">按住 说话</div>
+        <input id="star-text" class="chat-input hidden" placeholder="说点什么…" autocomplete="off">
+        <button id="star-send" class="chat-send hidden">发送</button>
+        <button id="star-plus" class="chat-icon" title="发一张照片">＋</button>
+        <input type="file" id="star-file" accept="image/*" class="hidden">
+      </div>
+    </div>
+  </div>
+
+  <!-- 登录弹窗：未登录时的统一入口（点用户图标 / 提交补星 / 点亮前都会走这里） -->
+  <div id="dlg-login" class="mask hidden">
+    <div class="sheet">
+      <button class="sheet-close">✕</button>
+      <h3>先登录</h3>
+      <p class="field-label">登录后，你补的这段记忆才会写进TA的本体</p>
+      <div class="form-row">
+        <input id="login-phone3" type="text" maxlength="32" placeholder="用户名" autocomplete="username">
+      </div>
+      <div class="form-row">
+        <input id="login-code3" type="password" maxlength="64" placeholder="密码">
+        <button id="btn-code3" class="ghost-btn" style="display:none">获取验证码</button>
+      </div>
+      <button id="btn-login3" class="primary-btn"><span>登 录</span></button>
+    </div>
+  </div>
+
+  <!-- 忆点星光·转发弹窗：点人物即生成转发（亲友只看得到「你和他」这一族星） -->
+  <div id="dlg-share" class="mask hidden">
+    <div class="sheet">
+      <button class="sheet-close">✕</button>
+      <h3 id="share-title">把这一族星发给他</h3>
+      <p id="share-text" class="empty-tip"></p>
+      <div id="share-link" class="share-link"></div>
+      <button id="btn-share-copy" class="primary-btn">复制链接</button>
+    </div>
+  </div>
+
+  <div id="dlg-album" class="mask hidden">
+    <div class="sheet">
+      <button class="sheet-close">✕</button>
+      <h3>发送给TA</h3>
+      <p class="field-label">照片会压缩到 500K 以内再发送</p>
+      <div class="list">
+        <div class="recover-item" id="pick-photo"><b>🖼️ 照片</b><p>让TA看到画面里的场景与人物</p></div>
+        <div class="recover-item" id="pick-doc"><b>📄 文档</b><p>PDF / Word / PPT / 文本，帮TA找回往事</p></div>
+        <div class="recover-item" id="pick-text"><b>✍️ 粘贴文字</b><p>聊天记录 / 日记，最长 20000 字</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部弹窗：粘贴文字（聊天记录 / 日记，最长20000字） -->
+  <div id="dlg-text" class="mask hidden">
+    <div class="sheet tall">
+      <button class="sheet-close">✕</button>
+      <h3>粘贴一段文字给TA</h3>
+      <p class="field-label">你和TA曾经的聊天记录、TA写过的日记、任何关于TA的回忆，都可以粘贴进来——TA会读，并把这些记起来。</p>
+      <textarea id="text-input" class="text-input" maxlength="20000" placeholder="把聊天记录 / 日记粘贴到这里…"></textarea>
+      <div class="text-foot">
+        <span id="text-count">0 / 20000</span>
+        <button id="btn-text-send" class="primary-btn"><span>发送给TA</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <div id="toast" class="hidden"></div>
+
+  <!-- 底部弹窗：我的资料（资料 / 我的声音 / 我的形象） -->
+  <div id="dlg-user" class="mask hidden">
+    <div class="sheet tall">
+      <button class="sheet-close">✕</button>
+      <div class="user-head">
+        <img id="user-face" class="user-face hidden" alt="我的形象">
+        <span id="user-face-fallback" class="user-face user-face--ph">🧠</span>
+        <div class="user-head-text">
+          <h3 id="user-name">—</h3>
+          <p id="user-phone" class="field-label">—</p>
+        </div>
+      </div>
+      <div class="tab-row">
+        <span class="tab on" data-utab="info">📋 资料</span>
+        <span class="tab" data-utab="voices">🎙️ 我的声音</span>
+        <span class="tab" data-utab="faces">🖼️ 我的形象</span>
+      </div>
+      <div id="utab-info" class="tab-page">
+        <p class="field-label">我的AI本体</p>
+        <div id="user-ai-line" class="user-ai-line">—</div>
+        <p class="field-label">姓名</p>
+        <input id="user-name-edit" maxlength="20" placeholder="怎么称呼你">
+        <p class="field-label">账号（登录名，不可改）</p>
+        <input id="user-phone-edit" type="text" maxlength="32" placeholder="登录账号" disabled>
+        <p class="field-label">相关资料（点选，帮助TA认识你）</p>
+        <div class="tag-row" id="user-gender-tags"></div>
+        <input id="user-city-edit" maxlength="20" placeholder="所在城市">
+        <input id="user-profession-edit" maxlength="30" placeholder="职业">
+        <input id="user-interests-edit" maxlength="60" placeholder="兴趣爱好（逗号分隔）">
+        <div class="btn-row">
+          <button id="btn-user-save" class="primary-btn"><span>保存资料</span></button>
+        </div>
+      </div>
+      <div id="utab-voices" class="tab-page hidden">
+        <p class="field-label">你AI本体的各种情绪声音（点「编辑」用音频编辑器调整）</p>
+        <div id="voice-list" class="list"></div>
+      </div>
+      <div id="utab-faces" class="tab-page hidden">
+        <p class="field-label">你的形象照（上传后AI会"看到"并记住自己长什么样）</p>
+        <div id="face-list" class="face-grid"></div>
+        <div class="btn-row">
+          <button id="btn-face-upload" class="ghost-btn">＋ 上传形象照</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用确认弹窗（删除记忆等危险操作：自定义底部弹窗，禁用 confirm） -->
+  <div id="dlg-confirm" class="mask hidden">
+    <div class="sheet">
+      <button class="sheet-close">✕</button>
+      <h3 id="confirm-title">确认操作</h3>
+      <p id="confirm-desc" class="inv-desc"></p>
+      <div class="btn-row">
+        <button id="btn-confirm-cancel" class="ghost-btn">再想想</button>
+        <button id="btn-confirm-ok" class="danger-btn"><span>确认</span></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../voice.js"></script>
+      <script src="habit-graph.js?v=20261001b"></script>
+  <script src="amnesia.js?v=20261003f"></script>
+</body>
+</html>

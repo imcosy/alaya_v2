@@ -1,0 +1,2033 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>阿赖耶 v2 · 记忆引擎控制台</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:#0d0f14; color:#e8e6e3; display:flex; flex-direction:column; overflow:hidden; }
+  header { padding:10px 16px 0; flex:none; }
+  .hdrow { display:flex; align-items:center; gap:8px; }
+  header h1 { font-size:17px; font-weight:600; letter-spacing:1px; flex:1; }
+  header h1 span { color:#b8925a; }
+  .aibadge { flex:none; font-size:12px; color:#e8c88a; background:#2b2416; border:1px solid rgba(184,146,90,.35);
+             padding:4px 10px; border-radius:13px; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hicon { flex:none; width:34px; height:34px; border-radius:50%; background:#1a1d25; border:1px solid #2a2e3a;
+           display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer; }
+  .hicon:active { transform:scale(.92); }
+  /* ── 三栏主结构：左（对话）· 中（习气网络 3D）· 右（记忆/我识/熏习） ── */
+  #cols { flex:1; min-height:0; display:grid; grid-template-columns:392px minmax(0,1fr) 392px; gap:10px;
+          padding:10px 14px 14px; }
+  .col { min-width:0; min-height:0; display:flex; flex-direction:column;
+         background:#101319; border:1px solid #1e2330; border-radius:14px; overflow:hidden; }
+  .colhd { flex:none; display:flex; align-items:center; gap:8px; padding:9px 12px;
+           border-bottom:1px solid #1c202b; }
+  .colhd h2 { font-size:13px; font-weight:600; color:#b8925a; letter-spacing:.5px; }
+  .colhd .sub { font-size:11px; color:#5d6472; margin-left:auto; }
+  .colbody { flex:1; min-height:0; overflow-y:auto; padding:10px 12px 14px; }
+  .colbody::-webkit-scrollbar { width:6px; }
+  .colbody::-webkit-scrollbar-thumb { background:#242a38; border-radius:3px; }
+  /* 右栏顶部页签（种子库 / 我识 / 熏习） */
+  .ctabs { flex:none; display:flex; gap:2px; padding:6px 8px 0; border-bottom:1px solid #1c202b; }
+  .ctabs div { flex:1; text-align:center; padding:7px 2px; font-size:12.5px; color:#7a8194; cursor:pointer;
+               border-bottom:2px solid transparent; }
+  .ctabs div.on { color:#e8c88a; border-bottom-color:#b8925a; }
+  .cpage { display:none; }
+  .cpage.on { display:block; }
+  /* ── 中栏：习气网络 3D 视图 ── */
+  #col-mid { position:relative; background:radial-gradient(circle at 50% 42%, #141a28 0%, #0b0d13 72%); }
+  #habit-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:1;
+                  opacity:0; transition:opacity .8s ease; touch-action:none; }
+  #habit-canvas.on { opacity:1; }
+  #mid-hd { position:absolute; left:0; right:0; top:0; z-index:2; display:flex; align-items:center; gap:8px;
+            flex-wrap:wrap; padding:9px 12px; pointer-events:none;
+            background:linear-gradient(rgba(11,13,19,.82), transparent); }
+  #mid-hd h2 { font-size:13px; font-weight:600; color:#b8925a; letter-spacing:.5px; }
+  #mid-hd .sub { font-size:11px; color:#5d6472; margin-left:auto; }
+  /* 意识海观察维度：同一片海，换一个维度就换一种排布 */
+  #oceanViews { pointer-events:auto; display:flex; gap:6px; flex-basis:100%; margin-top:2px; }
+  #oceanViews span { padding:2px 10px; border-radius:10px; font-size:11px; color:#8b93a7; cursor:pointer;
+                     background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.10); }
+  #oceanViews span.on { color:#8fd8ff; border-color:rgba(143,216,255,.5); background:rgba(143,216,255,.14); }
+  #mid-tip { position:absolute; left:0; right:0; bottom:6px; z-index:2; text-align:center;
+             font-size:11px; color:#5d6472; pointer-events:none; }
+  /* ── 中栏底部：三个观测模型（一排三列，图形化表达变化；发光=数字时代的霓虹感）──
+     ① 觉醒盘（半环仪表）· ② 念头辐射（中心向外的辐条）· ③ 人格雷达（特质多边形） */
+  #manas-hud { position:absolute; left:10px; right:10px; bottom:28px; z-index:3;
+               display:flex; flex-wrap:wrap; justify-content:center; align-items:flex-end;
+               column-gap:26px; row-gap:10px; pointer-events:none;
+               filter:drop-shadow(0 0 10px rgba(120,180,255,.10)); }
+  .obs { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .obs canvas { display:block; }
+  .obs-cap { max-width:176px; font-size:11.5px; letter-spacing:.2px; color:#7d8598;
+             text-shadow:0 1px 4px #070b16, 0 0 10px rgba(120,180,255,.25); white-space:nowrap;
+             overflow:hidden; text-overflow:ellipsis; }
+  .obs-cap b { color:#cfe3ff; font-weight:600; }
+  /* 线框人头（canvas 内部 260 / 显示 220）：青色霓虹 + 发光晕 */
+  #face-dot { position:absolute; top:50px; right:12px; width:220px; height:220px; z-index:3;
+              pointer-events:none; opacity:0; transition:opacity .8s ease;
+              filter:brightness(1.08) saturate(1.12)
+                     drop-shadow(0 0 7px rgba(120,200,255,.5))
+                     drop-shadow(0 0 20px rgba(80,160,255,.26)); }
+  #face-dot.on { opacity:1; }
+  /* 中枢未载入（温态）：提示点击唤醒 */
+  #manas-idle { position:absolute; left:0; right:0; bottom:26px; z-index:3; text-align:center;
+                font-size:12px; color:#7a8194; }
+  #manas-idle b { color:#e8c88a; cursor:pointer; text-decoration:underline; }
+  .card { background:#151821; border:1px solid #222735; border-radius:12px; padding:12px 14px; margin-bottom:10px; }
+  .card h3 { font-size:13px; color:#b8925a; font-weight:600; margin-bottom:8px; }
+  .stat { display:flex; gap:10px; flex-wrap:wrap; }
+  .stat .it { flex:1; min-width:100px; background:#1a1e29; border-radius:10px; padding:10px 12px; }
+  .stat .it b { display:block; font-size:20px; color:#e8c88a; }
+  .stat .it span { font-size:11.5px; color:#7a8194; }
+  .seed { position:relative; padding:9px 64px 9px 11px; border-radius:10px; background:#1c202b; margin-bottom:8px; font-size:13px; line-height:1.6; }
+  .seed .t { color:#8a92a3; font-size:11.5px; margin-bottom:2px; }
+  .seed .t b { color:#b8925a; font-weight:500; }
+  /* 种子卡片右侧操作：编辑 / 删除 */
+  .seedops { position:absolute; top:8px; right:9px; display:flex; gap:5px; }
+  .seedop { width:24px; height:24px; border-radius:7px; border:1px solid #2a2e3a; background:#1a1d25;
+            color:#9aa0ad; font-size:12px; cursor:pointer; display:flex; align-items:center;
+            justify-content:center; padding:0; outline:none; }
+  .seedop:hover { border-color:#3a4152; color:#e8c88a; }
+  .seedop:active { transform:scale(.93); }
+  .seededit { width:100%; box-sizing:border-box; background:#12151c; color:#e8e6e3; border:1px solid #b8925a;
+              border-radius:8px; padding:8px 10px; font-size:13.5px; line-height:1.6; font-family:inherit;
+              resize:vertical; min-height:62px; outline:none; margin-top:3px; }
+  .frow { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .ftag { padding:4px 11px; border-radius:12px; font-size:12px; background:#1a1d25; border:1px solid #2a2e3a;
+          color:#9aa0ad; cursor:pointer; }
+  .ftag.on { border-color:#b8925a; color:#e8c88a; background:#2b2416; }
+  .layer { background:#1c202b; border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:12.5px; line-height:1.7; }
+  .layer .h { color:#b8925a; font-size:12px; font-weight:600; margin-bottom:4px; }
+  .layer pre { white-space:pre-wrap; word-break:break-word; color:#c8cdd8; font-family:inherit; }
+  .logi { display:flex; gap:8px; padding:8px 10px; border-bottom:1px solid #1c202b; font-size:12.5px; line-height:1.5; }
+  .logi .op { flex:none; width:66px; color:#b8925a; }
+  .logi .dt { flex:none; margin-left:auto; color:#5d6472; font-size:11px; }
+  .edge { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#1c202b; border-radius:8px;
+          margin-bottom:6px; font-size:12.5px; }
+  .edge .lnk { color:#7a8194; }
+  .edge .w { margin-left:auto; color:#b8925a; font-size:11.5px; }
+  .empty { text-align:center; color:#5d6472; font-size:13px; padding:30px 0; }
+  /* ── 对话页（左栏内自适应） ── */
+  #page-chat { flex:1; min-height:0; display:flex; flex-direction:column; padding:0; overflow:hidden; position:relative; }
+  #cam { display:none; position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; background:#000; }
+  #chat { flex:1; scrollbar-width: none; overflow-y:auto; padding:10px 14px; display:flex; flex-direction:column; gap:10px; position:relative; z-index:1; }
+  .bubble { max-width:82%; padding:9px 13px; border-radius:14px; font-size:14.5px; line-height:1.55;
+            word-break:break-word; white-space:pre-wrap; }
+  .u { align-self:flex-end; background:#2b4a6b; border-bottom-right-radius:4px; }
+  .a { align-self:flex-start; background:#1e222c; border-bottom-left-radius:4px; }
+  /* 主动搭话：她自己想起一件事来找你说，不是回应你 */
+  .a.proactive { border-left:2px solid #c9a063; }
+  .a.proactive::before { content:'主动'; display:block; font-size:10.5px; letter-spacing:1px;
+                         color:#c9a063; margin-bottom:3px; }
+  .sys { align-self:center; font-size:11.5px; color:#6b7280; background:none; padding:2px; }
+  .bubble.scene { align-self:center; font-size:12px; color:#9fd0a8; background:rgba(36,62,46,.55);
+                  border:1px dashed rgba(120,190,130,.4); max-width:92%; }
+  .bubble img { max-width:180px; max-height:220px; border-radius:10px; display:block; }
+  /* 摄像头模式：气泡浮在画面上，半透明毛玻璃 */
+  #chat.overcam .bubble { background:rgba(18,22,32,.62); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+  #chat.overcam .bubble.scene { background:rgba(24,44,32,.62); }
+  .memtag { align-self:flex-start; font-size:11.5px; color:#b8925a; background:rgba(184,146,90,.08);
+            border:1px dashed rgba(184,146,90,.35); border-radius:10px; padding:6px 10px; line-height:1.6; }
+  footer { flex:none; padding:10px 0 max(14px, env(safe-area-inset-bottom)); text-align:center;
+           position:relative; z-index:2; background:linear-gradient(transparent, rgba(13,15,20,.88) 32%); }
+  .bar { display:flex; align-items:center; justify-content:center; gap:20px; }
+  .sbtn { width:46px; height:46px; border-radius:50%; border:1px solid #2a2e3a; background:#1a1d25;
+          color:#9aa0ad; font-size:19px; cursor:pointer; outline:none; transition:transform .12s; }
+  .sbtn:active { transform:scale(.92); }
+  .sbtn.on { border-color:#b8925a; color:#e8c88a; background:#2b2416; }
+  #mic { width:62px; height:62px; border-radius:50%; border:none; cursor:pointer; position:relative;
+         background:radial-gradient(circle at 35% 30%, #3a4152, #232837); color:#e8c88a;
+         box-shadow:0 4px 18px rgba(0,0,0,.5); transition:transform .12s; outline:none; }
+  #mic:active { transform:scale(.94); }
+  #mic.rec { background:radial-gradient(circle at 35% 30%, #8a3a3a, #4a1f1f); color:#ffd9d9; }
+  #mic svg { width:27px; height:27px; }
+  #mic.rec::after { content:''; position:absolute; inset:-7px; border-radius:50%;
+                    border:2px solid rgba(200,70,70,.55); animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%{transform:scale(.9);opacity:1} 100%{transform:scale(1.25);opacity:0} }
+  #hint { margin-top:8px; font-size:11.5px; color:#6b7280; }
+  /* ── 导入记忆（查看自己的AI本体时的入口）── */
+  #impBtn { width:100%; padding:12px 14px; border:1px dashed #3a4152; border-radius:12px;
+            background:#161a22; color:#9fb0d0; font-size:13.5px; cursor:pointer; outline:none; }
+  #impBtn:active { transform:scale(.99); border-color:#b8925a; color:#e8c88a; }
+  .impbox { width:100%; min-height:120px; box-sizing:border-box; resize:vertical; margin-top:6px;
+            background:#12151c; color:#dfe6f5; border:1px solid #2a2e3a; border-radius:10px;
+            padding:10px 12px; font-size:14px; line-height:1.7; font-family:inherit; outline:none; }
+  .impbox:focus { border-color:#3a4152; }
+  .impfiles { font-size:12px; color:#7a8194; margin:10px 0 0; word-break:break-all; }
+  /* ── 底部弹窗（右上角关闭按钮，居中遮罩） ── */
+  #sheetMask { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:90; }
+  #sheetMask.on { display:block; }
+  #sheet { position:fixed; left:0; right:0; bottom:0; background:#161a23; border-radius:18px 18px 0 0;
+           padding:16px 16px max(16px, env(safe-area-inset-bottom)); transform:translateY(105%);
+           transition:transform .25s ease-out; z-index:91; max-height:82vh; overflow-y:auto; }
+  #sheet.on { transform:translateY(0); }
+  /* 全部弹窗都贴在右栏宽度内（PC 三栏时）——右栏固定 392px、布局内边距 14px，与 #cols 对齐；
+     遮罩同样只盖右栏：这是"右栏的弹窗"，不把整页模态化（点遮罩空白处或右上角 X 关闭）。
+     窄屏（<1181px 三栏堆叠、右栏已是全宽）不生效，仍是全宽底部弹窗。 */
+  @media (min-width:1181px) {
+    #sheet { left:auto; right:14px; width:392px; }
+    #sheetMask { left:auto; right:14px; width:392px; }
+  }
+  .sheetclose { position:absolute; top:12px; right:14px; width:30px; height:30px; border-radius:50%;
+                background:#232837; color:#9aa0ad; display:flex; align-items:center; justify-content:center;
+                font-size:14px; cursor:pointer; }
+  .sheettitle { font-size:15px; color:#e8c88a; font-weight:600; margin-bottom:12px; }
+  .ailine { display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:12px;
+            background:#1c202b; margin-bottom:8px; cursor:pointer; border:1px solid transparent; }
+  .ailine.on { border-color:#b8925a; background:#2b2416; }
+  .ailine .em { font-size:22px; flex:none; }
+  .ailine .nm { flex:1; font-size:14px; color:#e8e6e3; }
+  .ailine .ck { color:#b8925a; font-size:15px; }
+  .urow { display:flex; margin-bottom:9px; font-size:13px; line-height:1.6; }
+  .urow .k { flex:none; width:80px; color:#7a8194; }
+  .urow .v { color:#d5dae3; word-break:break-word; }
+  .entryrow { display:flex; gap:8px; margin-top:14px; }
+  .entry { flex:1; text-align:center; padding:12px 0; background:#1c202b; border:1px solid #2a2e3a; border-radius:12px; font-size:13.5px; color:#e8e6e3; cursor:pointer; }
+  .entry:active { transform:scale(.97); }
+  /* ── 记忆种子编辑弹窗 ── */
+  .sfld { font-size:12px; color:#7a8194; margin:14px 0 6px; }
+  .sta { width:100%; box-sizing:border-box; background:#1c202b; border:1px solid #2a2e3a; border-radius:10px;
+         color:#e8e6e3; font-size:14px; line-height:1.55; padding:9px 11px; resize:vertical; outline:none;
+         font-family:inherit; }
+  .sta:focus, .sinp:focus { border-color:#b8925a; }
+  .sinp { width:100%; box-sizing:border-box; background:#1c202b; border:1px solid #2a2e3a; border-radius:10px;
+          color:#e8e6e3; font-size:14px; padding:9px 11px; outline:none; }
+  .frow { display:flex; flex-wrap:wrap; gap:8px; }
+  /* ── 模型设置弹窗 ── */
+  .cfgk { font-size:12px; color:#7a8194; margin-bottom:4px; }
+  .cfghead { font-size:13px; font-weight:600; color:#e8c88a; margin:20px 0 4px;
+             border-top:1px solid #232837; padding-top:12px; }
+  .cfgsave { width:100%; margin:20px 0 6px; padding:13px 0; border-radius:12px;
+             border:1px solid #b8925a; background:#2b2416; color:#e8c88a; font-size:14px; cursor:pointer; }
+  .cfgsave:disabled { opacity:.5; }
+  .ftag { padding:6px 13px; border-radius:16px; background:#1c202b; border:1px solid #2a2e3a;
+          color:#9aa0ad; font-size:12.5px; cursor:pointer; }
+  .ftag.on { border-color:#b8925a; background:#2b2416; color:#e8c88a; }
+  .wrow { display:flex; align-items:center; gap:12px; }
+  .wrow input[type=range] { flex:1; accent-color:#b8925a; }
+  .wval { flex:none; width:44px; text-align:right; color:#e8c88a; font-size:13.5px; }
+  .smeta { background:#1a1e27; border-radius:10px; padding:10px 12px; margin-top:14px; }
+  .smeta .urow { margin-bottom:5px; font-size:12.5px; }
+  .smeta .urow:last-child { margin-bottom:0; }
+  .sev { background:#1a1e27; border-left:2px solid #b8925a; border-radius:8px; padding:9px 11px;
+         font-size:12.5px; color:#b8a98a; line-height:1.6; }
+  .slinks { display:flex; flex-direction:column; gap:6px; }
+  .slink { display:flex; align-items:center; gap:9px; padding:8px 11px; background:#1c202b;
+           border:1px solid #2a2e3a; border-radius:10px; cursor:pointer; font-size:12.5px; }
+  .slink:active { transform:scale(.99); }
+  .slink .r { flex:none; color:#7a8194; font-size:11px; background:#232837; border-radius:6px; padding:2px 7px; }
+  .slink .t { flex:1; color:#d5dae3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .slink .w { flex:none; color:#b8925a; font-size:11.5px; }
+  .sbtns { display:flex; gap:10px; margin-top:18px; }
+  .sbtns button { flex:1; padding:11px 0; border-radius:11px; font-size:14px; cursor:pointer;
+                  border:1px solid #2a2e3a; outline:none; }
+  .sbtns button:disabled { opacity:.5; }
+  .sbtnp { background:#2b2416; border-color:#b8925a !important; color:#e8c88a; }
+  .sbtd { background:#2a1a1a; border-color:#5a2a2a !important; color:#e08a8a; }
+  /* ── 强制登录（星云背景 + 动效 + 手机端底部弹窗） ── */
+  #loginMask { position:fixed; inset:0; background:#0b0d13; z-index:200; display:none; align-items:center; justify-content:center; padding:20px; overflow:hidden; }
+  .lgbg { position:absolute; inset:-6%; background:url(img/login_bg.jpg) center/cover no-repeat; animation:lgKen 30s ease-in-out infinite alternate; }
+  @keyframes lgKen { from { transform:scale(1.02) translate(0,0); } to { transform:scale(1.14) translate(-1.6%,-2.2%); } }
+  .lgdim { position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,13,19,.28) 0%, rgba(11,13,19,.60) 62%, rgba(13,12,10,.78) 100%); }
+  .lgstars { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+  .lgstars i { position:absolute; border-radius:50%; background:#eed9a2; opacity:0; animation:lgTw linear infinite; }
+  @keyframes lgTw { 0%,100% { opacity:0; transform:translateY(0); } 50% { opacity:.85; transform:translateY(-18px); } }
+  .lgglow { position:absolute; left:50%; bottom:8%; width:78vw; height:78vw; max-width:520px; max-height:520px; transform:translateX(-50%); border-radius:50%;
+            background:radial-gradient(circle, rgba(230,192,120,.20), rgba(230,192,120,.05) 46%, transparent 68%); animation:lgBreath 5.6s ease-in-out infinite; pointer-events:none; }
+  @keyframes lgBreath { 0%,100% { opacity:.55; transform:translateX(-50%) scale(1); } 50% { opacity:1; transform:translateX(-50%) scale(1.14); } }
+  .lgcard { position:relative; z-index:2; width:100%; max-width:340px; background:rgba(20,23,32,.82); border:1px solid rgba(184,146,90,.38); border-radius:20px; padding:28px 24px;
+            backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); box-shadow:0 24px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(232,200,138,.12);
+            animation:lgUp .65s cubic-bezier(.22,.9,.32,1) both; }
+  @keyframes lgUp { from { opacity:0; transform:translateY(30px) scale(.97); } to { opacity:1; transform:none; } }
+  .lgemoji { text-align:center; font-size:40px; animation:lgLogo 3.6s ease-in-out infinite; }
+  @keyframes lgLogo { 0%,100% { filter:drop-shadow(0 0 5px rgba(232,200,138,.35)); transform:scale(1); } 50% { filter:drop-shadow(0 0 18px rgba(232,200,138,.8)); transform:scale(1.07); } }
+  .lgtitle { text-align:center; font-size:18px; color:#e8c88a; font-weight:600; margin:8px 0 4px; letter-spacing:2px; }
+  .lgsub { text-align:center; font-size:12px; color:#8a92a3; margin-bottom:18px; }
+  #lgPhone, #lgCode { width:100%; background:rgba(13,16,24,.72); border:1px solid rgba(184,146,90,.30); border-radius:12px; padding:12px 14px; font-size:15px; color:#e8e6e3; outline:none; }
+  #lgPhone:focus, #lgCode:focus { border-color:#b8925a; box-shadow:0 0 0 3px rgba(184,146,90,.14); }
+  #lgPhone { margin-bottom:10px; }
+  .lgrow { display:flex; gap:8px; margin-bottom:14px; }
+  .lgrow input { flex:1; min-width:0; }
+  #lgSend { flex:none; background:#2b2416; color:#e8c88a; border:1px solid rgba(184,146,90,.45); border-radius:12px; padding:0 14px; font-size:13px; cursor:pointer; }
+  #lgSend:disabled, #lgGo:disabled { opacity:.5; }
+  #lgGo { width:100%; background:linear-gradient(135deg,#c9a263,#9a7440); color:#16120a; font-weight:700; font-size:15px; border:none; border-radius:12px; padding:13px; cursor:pointer; box-shadow:0 8px 26px rgba(184,146,90,.30); }
+  #lgErr { color:#d97b7b; font-size:12.5px; min-height:18px; margin-top:10px; text-align:center; line-height:1.5; }
+  /* 手机端：登录窗改底部弹窗 */
+  @media (max-width:640px) {
+    #loginMask { align-items:flex-end; padding:0; }
+    .lgcard { max-width:none; border-radius:22px 22px 0 0; border-bottom:none; padding:30px 24px calc(28px + env(safe-area-inset-bottom)); animation:lgSheet .5s cubic-bezier(.22,.9,.32,1) both; }
+  }
+  @keyframes lgSheet { from { transform:translateY(100%); } to { transform:none; } }
+  /* ── 我的声音 ── */
+  .vrow { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#1c202b; border-radius:12px; margin-bottom:8px; }
+  .vrow .vt { flex:none; background:#2b2416; color:#e8c88a; font-size:12px; padding:4px 10px; border-radius:10px; max-width:88px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .vrow .vn { flex:1; min-width:0; }
+  .vrow .vn b { display:block; font-size:13.5px; color:#e8e6e3; font-weight:500; }
+  .vrow .vn span { font-size:11.5px; color:#7a8194; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .vrow .vop { flex:none; display:flex; gap:6px; }
+  .vbtn { height:32px; border-radius:16px; background:#232837; border:none; color:#9aa0ad; font-size:13px; cursor:pointer; padding:0 10px; min-width:32px; }
+  .vbtn.red { background:#3a2020; color:#e08c8c; }
+  .vbtn.confirm { background:#8a3a3a; color:#ffd9d9; }
+  /* ── 波形编辑器 ── */
+  /* ── 我的形象 ── */
+  .faceup { text-align:center; border:1.5px dashed rgba(184,146,90,.5); color:#e8c88a; border-radius:12px; padding:14px; font-size:13.5px; cursor:pointer; margin-bottom:12px; }
+  .faceup:active { transform:scale(.98); }
+  .facegrid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .facecard { background:#1c202b; border-radius:12px; overflow:hidden; }
+  .facecard img { width:100%; height:150px; object-fit:cover; display:block; cursor:zoom-in; }
+  .facecard .fd { padding:8px 10px 4px; font-size:11.5px; color:#9aa0ad; line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .facecard .fops { display:flex; padding:6px 10px 10px; }
+  .facecard .fops .vbtn { flex:1; }
+  .sheading { font-size:12px; color:#7a8194; margin:12px 2px 8px; }
+  /* 照片放大浏览 */
+  #lightbox { position:fixed; inset:0; background:rgba(0,0,0,.88); display:none; z-index:250;
+              align-items:center; justify-content:center; cursor:zoom-out; }
+  #lightbox.on { display:flex; }
+  #lightbox img { max-width:94vw; max-height:86vh; border-radius:10px; box-shadow:0 14px 60px rgba(0,0,0,.6); }
+  /* ── 窄屏/手机端：三栏堆叠为纵向（中栏保底高度，习气网络仍可 3D 交互） ── */
+  @media (max-width:1180px) {
+    body { overflow:auto; }
+    #cols { grid-template-columns:1fr; overflow-y:auto; padding:8px 10px 14px; gap:12px; }
+    .col { border-radius:12px; }
+    #col-left { height:62vh; min-height:420px; }
+    #col-mid { height:56vh; min-height:360px; }
+    #col-right { max-height:none; }
+    .colbody { overflow-y:visible; }
+    #manas-hud { bottom:28px; }
+    #face-dot { width:120px; height:120px; top:58px; right:10px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="hdrow">
+    <h1>阿赖耶 v2 <span>· 记忆引擎控制台</span></h1>
+    <div class="aibadge" id="aiBadge"></div>
+    <div class="hicon" id="btnAis">🤖</div>
+    <div class="hicon" id="btnUser">👤</div>
+  </div>
+</header>
+<div id="cols">
+
+  <!-- ══ 左栏：对话 ══ -->
+  <div class="col" id="col-left">
+    <div class="colhd">
+      <h2>💬 对话</h2>
+      <div class="sub" id="leftSub">未连接</div>
+    </div>
+    <div id="page-chat">
+      <video id="cam" playsinline muted></video>
+      <div id="chat"></div>
+      <footer>
+        <div class="bar" id="chatBar">
+          <button class="sbtn" id="albumBtn" title="相册/文件">🖼</button>
+          <button id="mic">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+          </button>
+          <button class="sbtn" id="camBtn" title="摄像头">📷</button>
+        </div>
+        <button id="impBtn" style="display:none">📥 导入记忆（文字 / 文件 / 照片）</button>
+        <div id="hint">点按开始对话 · 说完自动回复 · 说话即打断</div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ══ 中栏：习气网络（3D 透视 · 念头实时涌现） ══ -->
+  <div class="col" id="col-mid">
+    <canvas id="habit-canvas"></canvas>
+    <div id="mid-hd">
+      <h2>🌊 意识海</h2>
+      <div class="sub" id="midSub">一本体一片海 · 种子位置由多维指纹决定</div>
+      <div id="oceanViews">
+        <span data-ov="semantic" class="on">语义</span>
+        <span data-ov="time">时间</span>
+        <span data-ov="emotion">情绪</span>
+        <span data-ov="person">人物</span>
+        <span data-ov="scene">场景</span>
+      </div>
+    </div>
+    <!-- 线框人头：3D 网格 + 手写投影（见 JS faceInit） -->
+    <canvas id="face-dot"></canvas>
+    <div id="manas-hud">
+      <div class="obs">
+        <canvas id="obs-awake"></canvas>
+        <div class="obs-cap" id="cap-awake">觉醒 · 潜意识</div>
+      </div>
+      <div class="obs">
+        <canvas id="obs-think"></canvas>
+        <div class="obs-cap" id="cap-think">念头 · —</div>
+      </div>
+      <div class="obs">
+        <canvas id="obs-trait"></canvas>
+        <div class="obs-cap" id="cap-trait">人格 · —</div>
+      </div>
+    </div>
+    <div id="manas-idle">末那识中枢处于温态 · <b id="manasWake">点击唤醒中枢</b>（载入后永久后台涌现）</div>
+    <div id="mid-tip">星球大小=习气权重 · 炽白光环=当下主念 · 右上角点阵=它此刻的脸</div>
+  </div>
+
+  <!-- ══ 右栏：种子库 / 我识 / 熏习 ══ -->
+  <div class="col" id="col-right">
+    <div class="ctabs" id="ctabs">
+      <div data-cp="seeds" class="on">🌱 种子库</div>
+      <div data-cp="self">🪷 我识</div>
+      <div data-cp="xixi">📜 熏习</div>
+    </div>
+    <div class="colbody">
+      <!-- 种子库 -->
+      <div class="cpage on" id="cpage-seeds">
+        <div class="frow" id="seedFilter"></div>
+        <div id="winBox"></div>
+        <div id="seedStat" class="stat" style="margin-bottom:10px"></div>
+        <div id="seedList"></div>
+      </div>
+      <!-- 我识 -->
+      <div class="cpage" id="cpage-self">
+        <div class="frow" id="layerFilter"></div>
+        <div id="selfBody"></div>
+      </div>
+      <!-- 熏习 -->
+      <div class="cpage" id="cpage-xixi">
+        <div class="card"><h3>引擎状态</h3><div class="stat" id="engStat"></div></div>
+        <div class="card"><h3>习气网络概览</h3><div class="stat" id="netStat"></div></div>
+        <div class="card"><h3>概念节点（画像维度）</h3><div id="conList"></div></div>
+        <div class="card"><h3>概念关联边</h3><div id="edgeList"></div></div>
+        <div class="card"><h3>熏习流水（每笔权重变化可追溯）</h3><div id="xixiList"></div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<input type="file" id="fileIn" accept="image/*,.txt,.pdf,.docx,.pptx" style="display:none">
+<input type="file" id="faceIn" accept="image/*" style="display:none">
+
+<!-- 强制登录遮罩（登录前不可用任何功能；星云背景+动效，手机端底部弹窗） -->
+<div id="loginMask">
+  <div class="lgbg"></div>
+  <div class="lgdim"></div>
+  <div class="lgstars" id="lgStars"></div>
+  <div class="lgglow"></div>
+  <div class="lgcard">
+    <div class="lgemoji">🪷</div>
+    <div class="lgtitle" id="lgTitle">登录阿赖耶</div>
+    <div class="lgsub" id="lgSub">你的AI本体已在此等候 · 用本地账号登录</div>
+    <input id="lgUser" type="text" maxlength="32" placeholder="用户名" autocomplete="username">
+    <input id="lgPass" type="password" maxlength="64" placeholder="密码（至少 6 位）" autocomplete="current-password">
+    <input id="lgNick" type="text" maxlength="20" placeholder="昵称（注册后显示的名字）" style="display:none">
+    <button id="lgGo">登 录</button>
+    <div class="lgswitch" id="lgSwitch">还没有账号？<a id="lgToggle">注册一个</a></div>
+    <div id="lgErr"></div>
+  </div>
+</div>
+
+<!-- 底部弹窗 -->
+<div id="sheetMask"></div>
+<div id="sheet">
+  <div class="sheetclose" id="sheetClose">✕</div>
+  <div class="sheettitle" id="sheetTitle"></div>
+  <div id="sheetBody"></div>
+</div>
+
+<!-- 照片放大浏览 -->
+<div id="lightbox"><img alt=""></div>
+
+<!-- 种子库 / 习气网络 / 我识 / 熏习 均已并入右栏 -->
+
+<script src="amnesia/habit-graph.js?v=20261001b"></script>
+<script>
+const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + location.pathname.replace(/[^/]*$/, '') + 'ws';
+const $ = id => document.getElementById(id);
+const chat = $('chat');
+const OP_NAME = {recall:'读即写', strengthen:'共现强化', decay:'半衰', supersede:'修正', consolidate:'我识凝聚', connect:'连接'};
+
+// 控制台只有一个观察主体：ownerAiId = 当前选中的 AI 本体。
+// 切谁就看谁的大脑实况——种子库 / 习气网络 / 我识 / 声音形象 / 意识海全部跟随它。
+// （旧实现另有一路 memAiId，来自服务端 ready.owner_ai_id；guide 模式下那是「记忆归属A=用户本体」，
+//   于是切到如意后，种子库/我识读的全是用户本体，与意识海各显示一个本体——用户反馈的错乱源。）
+let ws = null, ownerAiId = 0, ready = false, curPage = 'seeds';
+let recording = false, stream = null, ctxIn = null, proc = null, srcNode = null, muteGain = null;
+let speech = false, silenceMs = 0;
+let aCtx = null, playQ = [], playAt = 0, playing = false;
+let curAiBubble = null, curAiText = '', curAiProactive = false, seedTypeFilter = '';
+
+/* ── 通用 ── */
+const API_BASE = location.pathname.replace(/[^/]*$/, '');
+/* ── 登录鉴权（ME=当前登录用户；全部请求带 X-User-Id/X-Token） ── */
+let ME = null, authFail = false;
+function saveMe() { localStorage.setItem('alaya_uid', ME.id); localStorage.setItem('alaya_token', ME.token); }
+function clearMe() { ME = null; localStorage.removeItem('alaya_uid'); localStorage.removeItem('alaya_token'); }
+function showLogin() { $('loginMask').style.display = 'flex'; }
+function forceLogin() { clearMe(); showLogin(); }
+function lgErr(t) { $('lgErr').textContent = t; }
+function authQ(extra) {
+  const e = extra || {};
+  return 'user_id=' + ME.id + '&token=' + encodeURIComponent(ME.token) +
+    Object.keys(e).map(k => `&${k}=${encodeURIComponent(e[k])}`).join('');
+}
+function authOpts(o) {
+  o = o || {};
+  o.headers = Object.assign({}, o.headers, ME ? { 'X-User-Id': ME.id, 'X-Token': ME.token } : {});
+  return o;
+}
+async function api(path, opts) {
+  const r = await fetch(API_BASE + path.replace(/^\//, ''), authOpts(opts));
+  if (r.status === 401) { forceLogin(); throw new Error('请先登录'); }
+  return r.json();
+}
+async function initAuth() {
+  const uid = localStorage.getItem('alaya_uid'), tk = localStorage.getItem('alaya_token');
+  if (uid && tk) {
+    try {
+      const r = await fetch(API_BASE + 'api/me', { headers: { 'X-User-Id': uid, 'X-Token': tk } });
+      if (r.ok) { ME = (await r.json()).user; ME.token = tk; return true; }
+    } catch (e) {}
+    clearMe();
+  }
+  showLogin();
+  return false;
+}
+/* 登录 / 注册（本地账号，用户名 + 密码） */
+let lgMode = 'login';
+function lgSetMode(m) {
+  lgMode = m;
+  const reg = m === 'register';
+  $('lgTitle').textContent = reg ? '注册阿赖耶' : '登录阿赖耶';
+  $('lgSub').textContent = reg ? '创建一个本地账号，你的AI本体随之诞生' : '你的AI本体已在此等候 · 用本地账号登录';
+  $('lgNick').style.display = reg ? '' : 'none';
+  $('lgGo').textContent = reg ? '注 册' : '登 录';
+  $('lgSwitch').innerHTML = reg
+    ? '已有账号？<a id="lgToggle">去登录</a>'
+    : '还没有账号？<a id="lgToggle">注册一个</a>';
+  $('lgToggle').onclick = () => lgSetMode(reg ? 'login' : 'register');
+  lgErr('');
+}
+$('lgToggle').onclick = () => lgSetMode('register');
+$('lgGo').onclick = async () => {
+  const username = $('lgUser').value.trim(), password = $('lgPass').value;
+  if (username.length < 3) return lgErr('用户名至少 3 位');
+  if (password.length < 6) return lgErr('密码至少 6 位');
+  $('lgGo').disabled = true; lgErr('');
+  try {
+    const path = lgMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const body = lgMode === 'register'
+      ? { username, password, nickname: $('lgNick').value.trim() || username }
+      : { username, password };
+    const d = await api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (d.user_id && d.token) {
+      ME = { id: d.user_id, token: d.token, nickname: d.nickname || username, username };
+      saveMe();
+      $('loginMask').style.display = 'none';
+      lgErr('');
+      loadAis();
+    } else lgErr(d.detail || d.message || (lgMode === 'register' ? '注册失败' : '登录失败'));
+  } catch (e) { lgErr(e.message || '操作失败'); }
+  $('lgGo').disabled = false;
+};
+$('lgPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('lgGo').click(); });
+/* 登录页星尘粒子：随机位置/大小/节奏的上浮闪烁 */
+(function () {
+  const box = $('lgStars');
+  for (let i = 0; i < 30; i++) {
+    const s = document.createElement('i'), sz = (1 + Math.random() * 2.2).toFixed(1) + 'px';
+    s.style.cssText = 'left:' + (Math.random() * 100).toFixed(1) + '%;top:' + (Math.random() * 100).toFixed(1) +
+      '%;width:' + sz + ';height:' + sz + ';animation-duration:' + (3.2 + Math.random() * 3.4).toFixed(1) +
+      's;animation-delay:-' + (Math.random() * 6).toFixed(1) + 's;';
+    box.appendChild(s);
+  }
+})();
+function el(tag, cls, html) { const d = document.createElement(tag); if (cls) d.className = cls; if (html !== undefined) d.innerHTML = html; return d; }
+function toast(t) {
+  const d = el('div', '', t);
+  d.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(20,22,30,.88);color:#e8e6e3;padding:12px 22px;border-radius:12px;font-size:14px;z-index:300;';
+  document.body.appendChild(d); setTimeout(() => d.remove(), 1800);
+}
+function esc(s) { const d = el('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+/* ── 右栏页签切换（种子库 / 我识 / 熏习） ── */
+$('ctabs').addEventListener('click', e => {
+  const p = e.target.dataset.cp; if (!p || p === curPage) return;
+  curPage = p;
+  document.querySelectorAll('#ctabs div').forEach(d => d.classList.toggle('on', d.dataset.cp === p));
+  document.querySelectorAll('.cpage').forEach(pg => pg.classList.toggle('on', pg.id === 'cpage-' + p));
+  refreshPage(p);
+});
+function refreshPage(p) {
+  if (!ownerAiId) return;
+  if (p === 'seeds') loadSeeds();
+  else if (p === 'self') loadSelf();
+  else if (p === 'xixi') { loadXixi(); loadNetwork(); }
+}
+
+/* ── AI 选择（右上角AI图标 → 底部弹窗，系统AI/我的AI本体分组） ── */
+let AIS = [], myAiId = 0;
+function isMyAi(id) { return !!myAiId && Number(id) === Number(myAiId); }
+async function loadAis() {
+  const data = await api('/api/ais');
+  AIS = data.ais || [];
+  myAiId = Number(data.my_ai_id || 0);
+  AIS.sort((a, b) => ((a.user_id ? 1 : 0) - (b.user_id ? 1 : 0)) || (a.id - b.id));
+  if (!ownerAiId && AIS.length) {
+    // 按上次切换的 AI 本体显示（持久化）；无记录时退回第一个可对话的 AI
+    const saved = Number(localStorage.getItem('alaya_ai') || 0);
+    const hit = saved && AIS.find(a => a.id === saved) && !isMyAi(saved);
+    pickAi(hit ? saved : (AIS.find(a => !isMyAi(a.id)) || AIS[0]).id);
+  }
+}
+function pickAi(id) {
+  if (recording) stopRec();
+  ownerAiId = id; ready = false; curAiBubble = null;
+  localStorage.setItem('alaya_ai', id);   // 全局持久化：下次刷新/打开按此显示
+  const a = AIS.find(x => x.id === id);
+  $('aiBadge').textContent = a ? (a.avatar && !a.avatar.startsWith('/') ? a.avatar + ' ' : '') + a.name : ('AI #' + id);
+  $('leftSub').textContent = a ? a.name : ('AI #' + id);
+  stopManas();
+  if (window.HabitGraph) { HabitGraph.load('owner_ai_id=' + id); HabitGraph.setActive(true); HabitGraph.setInteractive(true); }
+  // 自己的 AI 本体只能看（习气网络/记忆）+ 导入记忆，不能对话——否则会形成错乱。
+  // 用户只能跟其它的 AI 本体聊。
+  const mine = isMyAi(id);
+  $('chatBar').style.display = mine ? 'none' : '';
+  $('impBtn').style.display = mine ? '' : 'none';
+  $('hint').textContent = mine
+    ? '这是你自己的AI本体 · 可查看记忆与习气网络，也可导入记忆 · 对话请切换到其它AI本体'
+    : '点按开始对话 · 说完自动回复 · 说话即打断';
+  if (mine) { if (ws) { try { ws.close(); } catch (e) {} ws = null; } }
+  else initWs();
+  attachManas(id);
+  refreshPage(curPage);
+}
+async function openAiSheet() {
+  if (!AIS.length) await loadAis();
+  const body = $('sheetBody'); body.innerHTML = '';
+  [['系统AI', AIS.filter(a => !a.user_id)], ['我的AI本体', AIS.filter(a => a.user_id)]].forEach(([title, list]) => {
+    if (!list.length) return;
+    body.appendChild(el('div', 'sheading', title));
+    list.forEach(a => {
+      const line = el('div', 'ailine' + (a.id === ownerAiId ? ' on' : ''),
+        `<span class="em">${esc(a.avatar && !a.avatar.startsWith('/') ? a.avatar : '🤖')}</span>` +
+        `<span class="nm">${esc(a.name)}</span>${a.id === ownerAiId ? '<span class="ck">✓</span>' : ''}` +
+        (isMyAi(a.id) ? '<span class="ck" style="color:#7a8194">仅查看</span>' : ''));
+      line.onclick = () => { pickAi(a.id); closeSheet(); };
+      body.appendChild(line);
+    });
+  });
+  if (!body.children.length) body.appendChild(el('div', 'empty', '暂无可用的AI'));
+  openSheet('选择对话对象');
+}
+
+/* ── 底部弹窗（宽度随右栏，见 CSS；右上角关闭按钮，全屏遮罩点外部关闭） ── */
+function openSheet(title) { $('sheetTitle').textContent = title; $('sheetMask').classList.add('on'); $('sheet').classList.add('on'); }
+function closeSheet() { $('sheetMask').classList.remove('on'); $('sheet').classList.remove('on'); }
+$('sheetMask').onclick = closeSheet;
+$('sheetClose').onclick = closeSheet;
+$('btnAis').onclick = openAiSheet;
+
+/* ── 用户资料弹窗（登录资料 + 我的本体选择 + 声音/形象入口） ── */
+$('btnUser').onclick = async () => {
+  if (!ME) { forceLogin(); return; }
+  const body = $('sheetBody'); body.innerHTML = '';
+  body.appendChild(el('div', 'urow', `<span class="k">姓名</span><span class="v">${esc(ME.nickname || '')}</span>`));
+  body.appendChild(el('div', 'urow', `<span class="k">账号</span><span class="v">${esc(ME.username || '')}</span>`));
+  if (!ownerAiId) { openSheet('我的资料'); return; }
+  const main = await api('/api/user/main_ai');
+  const mine = AIS.filter(a => a.user_id);
+  if (mine.length) {
+    body.appendChild(el('div', 'urow', `<span class="k">我的本体</span><span class="v" style="color:#7a8194">与系统AI聊天的记忆归TA</span>`));
+    const frow = el('div', 'frow');
+    mine.forEach(a => {
+      const t = el('div', 'ftag' + (a.id === main.main_ai_id ? ' on' : ''),
+        esc((a.avatar && !a.avatar.startsWith('/') ? a.avatar + ' ' : '') + a.name));
+      t.onclick = async () => {
+        const d = await api('/api/user/main_ai', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ main_ai_id: a.id }) });
+        if (d.error) return toast(d.error);
+        frow.querySelectorAll('.ftag').forEach(x => x.classList.remove('on'));
+        t.classList.add('on');
+        toast('✓ 记忆本体已设为「' + a.name + '」');
+      };
+      frow.appendChild(t);
+    });
+    body.appendChild(frow);
+  }
+  const entryrow = el('div', 'entryrow');
+  const b1 = el('div', 'entry', '🎙 音色'); b1.onclick = () => openVoiceSheet();
+  const b2 = el('div', 'entry', '📷 我的形象'); b2.onclick = () => openFaceSheet();
+  entryrow.appendChild(b1); entryrow.appendChild(b2);
+  body.appendChild(entryrow);
+  const entryrow2 = el('div', 'entryrow');
+  const b3 = el('div', 'entry', '⚙️ 模型设置'); b3.onclick = () => openConfigSheet();
+  entryrow2.appendChild(b3);
+  body.appendChild(entryrow2);
+  openSheet('我的资料');
+};
+
+/* ── 模型设置：外部 ASR / LLM / TTS / 向量接口（写回 config.json，立即生效） ── */
+const CFG_GROUPS = [
+  ['llm', '语言模型 LLM（对话 / 抽取 / 我识凝聚）',
+    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
+     ['model', '模型名', 'gpt-4o-mini']]],
+  ['vision', '视觉模型（看图 / 照片描述，留空复用 LLM）',
+    [['base_url', '接口地址', ''], ['api_key', 'API Key', ''], ['model', '模型名', '']]],
+  ['asr', '语音识别 ASR（OpenAI 兼容 /audio/transcriptions）',
+    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
+     ['model', '模型名', 'whisper-1'], ['language', '识别语言', 'zh']]],
+  ['tts', '语音合成 TTS（OpenAI 兼容 /audio/speech）',
+    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
+     ['model', '模型名', 'tts-1'], ['voice', '默认音色', 'nova'],
+     ['format', '返回格式 wav/pcm', 'wav'], ['speed', '语速', '1.0']]],
+  ['embedding', '向量模型 Embedding（记忆召回的唯一语义坐标）',
+    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
+     ['model', '模型名', 'text-embedding-3-small']]],
+  ['speaker', '声纹服务（可选：外部 ASR 不返回声纹，不填则说话人=登录用户本人）',
+    [['enabled', '是否启用 true/false', 'false'], ['base_url', '接口地址', ''],
+     ['api_key', 'API Key', '']]],
+];
+
+async function openConfigSheet() {
+  openSheet('模型设置');
+  const body = $('sheetBody'); body.innerHTML = '<div class="empty">加载中…</div>';
+  let d;
+  try { d = await api('/api/config'); } catch (e) { body.innerHTML = '<div class="empty">加载失败</div>'; return; }
+  const cfg = d.config || {};
+  body.innerHTML = '';
+  const inputs = {};
+  const mk = (sec, key, label, ph, val) => {
+    const f = el('div', 'sfld');
+    f.appendChild(el('div', 'cfgk', esc(label)));
+    const multi = String(ph || '').includes('\n');
+    const i = document.createElement(multi ? 'textarea' : 'input');
+    i.className = 'impbox';
+    if (multi) { i.style.minHeight = '78px'; } else { i.style.minHeight = '0'; i.style.height = '40px'; }
+    i.placeholder = ph || ''; i.value = val == null ? '' : String(val);
+    f.appendChild(i);
+    inputs[sec + '.' + key] = i;
+    return f;
+  };
+  CFG_GROUPS.forEach(([sec, title, fields]) => {
+    body.appendChild(el('div', 'cfghead', esc(title) +
+      (d.configured && d.configured[sec] ? ' <span style="color:#6fcf97">· 已配置</span>'
+                                         : ' <span style="color:#8a92a3">· 未配置</span>')));
+    (fields || []).forEach(([k, label, ph]) => {
+      body.appendChild(mk(sec, k, label, ph, (cfg[sec] || {})[k]));
+    });
+    if (sec === 'tts') {
+      const vs = (cfg.tts && cfg.tts.voices) || [];
+      body.appendChild(mk('tts', '__voices', '音色清单（每行一个：音色id|显示名）',
+        'nova|Nova 女声\nshimmer|Shimmer 女声', vs.map(v => v.id + '|' + (v.name || v.id)).join('\n')));
+      const ev = (cfg.tts && cfg.tts.emotion_voices) || {};
+      body.appendChild(mk('tts', '__emotion', '情绪换声（每行一个：情绪|音色id）',
+        '伤心|shimmer\n兴奋|nova', Object.keys(ev).map(k => k + '|' + ev[k]).join('\n')));
+    }
+  });
+  body.appendChild(el('div', 'cfghead', '公共设置'));
+  body.appendChild(mk('server', 'default_ai_name', '公共本体名称（默认「如意」）', '如意',
+    (cfg.server || {}).default_ai_name));
+  const save = el('button', 'cfgsave', '保存并立即生效');
+  save.onclick = async () => {
+    const patch = {};
+    const put = (sec, key, val) => { (patch[sec] = patch[sec] || {})[key] = val; };
+    CFG_GROUPS.forEach(([sec, , fields]) => {
+      (fields || []).forEach(([k]) => {
+        const v = inputs[sec + '.' + k].value.trim();
+        put(sec, k, k === 'enabled' ? (v === 'true' || v === '1') :
+                      (k === 'speed' ? (Number(v) || 1.0) : v));
+      });
+    });
+    const parseLines = (txt, asObj) => {
+      const out = asObj ? {} : [];
+      txt.split('\n').map(x => x.trim()).filter(Boolean).forEach(line => {
+        const p = line.split('|');
+        const id = (p[0] || '').trim(), nm = (p[1] || p[0] || '').trim();
+        if (!id) return;
+        if (asObj) out[id] = nm; else out.push({ id, name: nm });
+      });
+      return out;
+    };
+    patch.tts.voices = parseLines(inputs['tts.__voices'].value, false);
+    patch.tts.emotion_voices = parseLines(inputs['tts.__emotion'].value, true);
+    patch.server = { default_ai_name: inputs['server.default_ai_name'].value.trim() || '如意' };
+    save.disabled = true;
+    try {
+      const r = await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch) });
+      if (r.error || r.detail) toast(r.error || r.detail);
+      else toast('✓ 已保存，下一句话立即使用新配置');
+    } catch (e) { toast('保存失败：' + e.message); }
+    save.disabled = false;
+  };
+  body.appendChild(save);
+}
+
+
+/* ── 导入记忆：把自己当下的信息（文字/文件/照片）直接形成记忆种子 ──
+   与聊天时说的话走**完全同一条链路**：同一份抽取铁律 + 同一份写入链路
+   （写入仲裁 / 置信度 / 关联熏习 / 概念凝聚 / 向量 / 半衰）。
+   不分类型、不打特殊标记——信息只有一种归宿：记忆种子。 */
+let impFiles = [];
+function openImportSheet() {
+  impFiles = [];
+  openSheet('导入记忆');
+  const body = $('sheetBody'); body.innerHTML = '';
+  const nm = (AIS.find(x => x.id === ownerAiId) || {}).name || '本体';
+  body.appendChild(el('div', 'sfld',
+    '以下内容会直接成为「' + nm + '」的记忆种子——与聊天时说的话走完全同一条链路（一视同仁，不分类型）。'));
+  const ta = el('textarea', 'impbox');
+  ta.placeholder = '粘贴文字：基本信息 / 经历 / 日记 / 笔记 / 资料…\n（模型按记忆种子的抽取铁律切成多条：只记真实写明的、一件事只出一条）';
+  body.appendChild(ta);
+
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true; inp.style.display = 'none';
+  inp.accept = '.txt,.md,.pdf,.docx,.pptx,.csv,.jpg,.jpeg,.png,.webp';
+  body.appendChild(inp);
+  const row = el('div', 'frow');
+  const bPick = el('div', 'ftag', '📄🖼 选文件 / 照片（可多选）');
+  bPick.onclick = () => inp.click();
+  row.appendChild(bPick);
+  body.appendChild(row);
+  const line = el('div', 'impfiles', '未选择文件');
+  body.appendChild(line);
+  inp.onchange = () => {
+    impFiles = Array.from(inp.files || []);
+    line.textContent = impFiles.length
+      ? ('已选 ' + impFiles.length + ' 个：' + impFiles.map(f => f.name).join('、'))
+      : '未选择文件';
+  };
+
+  const btns = el('div', 'sbtns');
+  const bGo = el('button', 'sbtd', '导入');
+  bGo.onclick = () => doImport(ta.value, bGo, line);
+  const bNo = el('button', 'sbtnp', '取消');
+  bNo.onclick = closeSheet;
+  btns.appendChild(bGo); btns.appendChild(bNo);
+  body.appendChild(btns);
+}
+async function doImport(text, btn, line) {
+  const t = String(text || '').trim();
+  if (!t && !impFiles.length) { toast('先粘贴文字或选择文件'); return; }
+  btn.disabled = true; btn.textContent = '导入中…';
+  let done = 0, seeds = 0, bad = '';
+  try {
+    if (t) {
+      const d = await api('/api/memory/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner_ai_id: ownerAiId, text: t }) });
+      if (d.error) { toast(d.error); btn.disabled = false; btn.textContent = '导入'; return; }
+      seeds += (d.written || []).length; done++;
+    }
+    for (let i = 0; i < impFiles.length; i++) {
+      const f = impFiles[i];
+      line.textContent = '正在导入 ' + (i + 1) + '/' + impFiles.length + '：' + f.name;
+      const fd = new FormData(); fd.append('file', f, f.name);
+      const d = await api('/api/memory/import/file?owner_ai_id=' + ownerAiId, { method: 'POST', body: fd });
+      if (d.error) { bad += '「' + f.name + '」' + d.error + ' '; continue; }
+      seeds += (d.written || []).length; done++;
+    }
+    impFiles = [];
+    toast('✓ 已处理 ' + done + ' 项，形成 ' + seeds + ' 颗记忆种子' + (bad ? '；未成功：' + bad : ''));
+    closeSheet();
+    if (curPage === 'seeds') loadSeeds();
+  } catch (e) {
+    toast('导入失败：' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '导入';
+}
+$('impBtn').onclick = openImportSheet;
+
+/* ── 现量窗口：此刻手里攒着、还没结生的临时记忆（结生后即清空）──
+   它不是"记住了什么"，而是本体当下的工作记忆：说出口但尚未巩固成长期记忆的那一段。
+   结生（静默90秒/满载/突显门控/会话结束）后会从这里消失、变成上面的长期种子。 */
+async function loadWorking() {
+  const box = $('winBox');
+  if (!box) return;
+  try {
+    const d = await api('/api/working?owner_ai_id=' + ownerAiId);
+    const groups = d.groups || [];
+    if (!d.total) { box.innerHTML = ''; return; }
+    const nameOf = id => { const a = AIS.find(x => x.id === id); return a ? a.name : ('#' + id); };
+    box.innerHTML = '<div class="card"><h3>🌊 现量 · 这一段尚未结生（' + d.total + ' 条）</h3>' +
+      groups.map(g => '<div style="margin:8px 0">' +
+        '<div style="color:#8ea2ff;font-size:12px;margin-bottom:4px">与「' + esc(nameOf(g.peer_ai_id)) + '」</div>' +
+        g.items.map(it => '<div class="seed" style="padding:6px 10px;margin:4px 0">' +
+          '<span style="color:#5d6472">' + esc(String(it.at).slice(11, 19)) + ' · ' + esc(it.who) + '</span> ' +
+          esc(String(it.text).slice(0, 70)) + '</div>').join('') +
+      '</div>').join('') + '</div>';
+  } catch (e) { box.innerHTML = ''; }
+}
+
+/* ── 种子库 ── */
+async function loadSeeds() {
+  loadWorking();
+  const data = await api('/api/seeds?owner_ai_id=' + ownerAiId + '&limit=200');
+  const seeds = data.seeds || [];
+  // 类型统计
+  const stat = {};
+  seeds.forEach(s => { stat[s.seed_type] = (stat[s.seed_type] || 0) + 1; });
+  $('seedStat').innerHTML = Object.entries(stat).map(([t, n]) =>
+    `<div class="it"><b>${n}</b><span>${SEED_TYPE_NAMES[t] || t}</span></div>`).join('');
+  // 筛选：点谁就把高亮给谁（旧实现只改了过滤条件、忘了切 .on 类，点了没有任何反馈）
+  $('seedFilter').innerHTML = '<div class="ftag' + (!seedTypeFilter ? ' on' : '') + '" data-t="">全部</div>' +
+    Object.keys(stat).map(t => `<div class="ftag${t === seedTypeFilter ? ' on' : ''}" data-t="${t}">${SEED_TYPE_NAMES[t] || t}</div>`).join('');
+  $('seedFilter').querySelectorAll('.ftag').forEach(f => f.onclick = () => {
+    seedTypeFilter = f.dataset.t;
+    $('seedFilter').querySelectorAll('.ftag').forEach(x => x.classList.toggle('on', x === f));
+    renderSeeds(seeds);
+  });
+  renderSeeds(seeds);
+}
+function renderSeeds(seeds) {
+  const list = seedTypeFilter ? seeds.filter(s => s.seed_type === seedTypeFilter) : seeds;
+  $('seedList').innerHTML = '';
+  if (!list.length) { $('seedList').appendChild(el('div', 'empty', '暂无种子，去「对话」页聊几句')); return; }
+  list.forEach(s => {
+    const box = el('div', 'seed',
+      `<div class="t"><b>[${esc(s.seed_type)}]</b> ${esc(s.seed_date_fmt || '无日期')} · 权重${(+s.weight).toFixed(3)} · 回忆${s.recall_count}次 · ${esc(s.state || '')}</div>` +
+      `<div class="txt">${esc(s.seed_text)}</div>`);
+    const ops = el('div', 'seedops');
+    const bEdit = el('button', 'seedop', '✏️'); bEdit.title = '编辑这条记忆';
+    bEdit.onclick = () => editSeedInline(box, s);
+    const bDel = el('button', 'seedop', '🗑'); bDel.title = '删除这条记忆';
+    bDel.onclick = () => confirmDelSeed(s, box);
+    ops.appendChild(bEdit); ops.appendChild(bDel);
+    box.appendChild(ops);
+    $('seedList').appendChild(box);
+  });
+}
+/* 就地编辑：点开变文本框，失焦即保存（Esc 放弃）。
+   后端按「人工编辑」记审计、并按新内容刷新向量（否则检索仍命中旧语义）。 */
+function editSeedInline(box, s) {
+  const holder = box.querySelector('.txt');
+  if (!holder || box.querySelector('.seededit')) return;
+  const ta = document.createElement('textarea');
+  ta.className = 'seededit';
+  ta.value = s.seed_text || '';
+  holder.replaceWith(ta);
+  ta.focus();
+  let done = false;
+  const restore = () => {
+    const d = document.createElement('div');
+    d.className = 'txt'; d.innerHTML = esc(s.seed_text || '');
+    ta.replaceWith(d);
+  };
+  const save = async () => {
+    if (done) return;
+    done = true;
+    const txt = ta.value.trim();
+    if (!txt || txt === (s.seed_text || '')) { restore(); return; }   // 没动过：原样退回，不重拉列表
+    const d = await api('/api/amnesia/seed/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed_id: s.id, owner_ai_id: ownerAiId, seed_text: txt }) });
+    if (d.error) { toast(d.error); loadSeeds(); return; }
+    toast('✓ 已修改，向量已按新内容刷新');
+    loadSeeds();
+  };
+  ta.onblur = save;
+  ta.onkeydown = e => { if (e.key === 'Escape') { done = true; restore(); } };
+}
+/* 删除：彻底删除不可恢复，先走底部弹窗确认（绝不用 confirm） */
+function confirmDelSeed(s, box) {
+  openSheet('删除这条记忆');
+  const body = $('sheetBody'); body.innerHTML = '';
+  body.appendChild(el('div', 'sev', '「' + esc(String(s.seed_text || '').slice(0, 80)) + '」'));
+  body.appendChild(el('div', 'sfld', '这条记忆会从习气网络彻底删除，它的突触关联一并消失，不可恢复。'));
+  const btns = el('div', 'sbtns');
+  const yes = el('button', 'sbtd', '确认删除');
+  const no = el('button', 'sbtnp', '取消');
+  no.onclick = closeSheet;
+  yes.onclick = async () => {
+    yes.disabled = true;
+    const d = await api('/api/amnesia/seed/delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed_id: s.id, owner_ai_id: ownerAiId }) });
+    if (d.error) { toast(d.error); yes.disabled = false; return; }
+    closeSheet(); box.remove(); toast('已删除这条记忆');
+    loadSeeds();
+  };
+  btns.appendChild(yes); btns.appendChild(no);
+  body.appendChild(btns);
+}
+
+/* ── 习气网络 ── */
+async function loadNetwork() {
+  const d = await api('/api/network?owner_ai_id=' + ownerAiId);
+  $('netStat').innerHTML =
+    `<div class="it"><b>${(d.concepts || []).length}</b><span>概念节点</span></div>` +
+    `<div class="it"><b>${(d.edges || []).length}</b><span>概念关联边</span></div>` +
+    `<div class="it"><b>${(d.seed_edges || {}).count || 0}</b><span>种子共现边</span></div>` +
+    ((d.type_stat || []).map(t => `<div class="it"><b>${t.n}</b><span>${SEED_TYPE_NAMES[t.seed_type] || t.seed_type}种子 · Σ权重${t.w}</span></div>`).join(''));
+  $('conList').innerHTML = '';
+  if (!(d.concepts || []).length) $('conList').appendChild(el('div', 'empty', '概念层暂未成型——同轮多种子共现时自动凝出概念'));
+  (d.concepts || []).forEach(c => {
+    $('conList').appendChild(el('div', 'seed',
+      `<div class="t"><b>[${esc(c.branch || '')}]</b> 权重${(+c.weight).toFixed(3)} · ${esc(c.status || '')}</div>${esc(c.name)}`));
+  });
+  $('edgeList').innerHTML = '';
+  if (!(d.edges || []).length) $('edgeList').appendChild(el('div', 'empty', '暂无概念关联边'));
+  (d.edges || []).forEach(e2 => {
+    $('edgeList').appendChild(el('div', 'edge',
+      `<span>${esc(e2.src_name)}</span><span class="lnk">—${esc(e2.relation_type)}→</span><span>${esc(e2.dst_name)}</span><span class="w">${(+e2.weight).toFixed(2)}</span>`));
+  });
+}
+
+/* ── 我识 ── */
+async function loadSelf() {
+  // 我识同样跟随当前观察主体：ai_id = 选中的本体。
+  // 不指定对话对象 → 后端给「该本体的大脑实况」：core（本体我）恒为 peer=0，
+  // relation/mood 取该本体最近演化过的那一层（切如意就是如意的关系我/心境）。
+  const d = await api('/api/selfmodel?ai_id=' + ownerAiId);
+  const sm = d.self_model || {};
+  const layers = [
+    ['core', '核心我（本体恒定：身份/价值观/说话习惯/边界）', ['identity', 'values', 'speech_habit', 'boundaries']],
+    ['relation', '关系我（按对话对象演化）', ['knows', 'attitude', 'unfinished', 'dynamic']],
+    ['mood', '心境（随经历流动）', ['emotion', 'focus', 'energy']],
+  ];
+  $('selfBody').innerHTML = '';
+  layers.forEach(([key, title, fields]) => {
+    const box = el('div', 'layer');
+    let body = '';
+    const data = sm[key];
+    if (data && data.content) {
+      fields.forEach(f => {
+        const v = data.content[f];
+        if (v) body += `<b style="color:#8a92a3">${f}：</b>${esc(typeof v === 'string' ? v : JSON.stringify(v, null, 0))}<br>`;
+      });
+      body += `<div style="color:#5d6472;font-size:11px;margin-top:5px">版本 v${data.version || 1} · 更新于 ${esc((data.updated_at || '').slice(0, 19))}</div>`;
+    } else body = '<span style="color:#5d6472">尚未成型——与TA对话后自动凝练</span>';
+    box.innerHTML = `<div class="h">${title}</div><pre>${body}</pre>`;
+    $('selfBody').appendChild(box);
+  });
+}
+
+/* ── 熏习日志 ── */
+async function loadXixi() {
+  const s = await api('/api/status');
+  $('engStat').innerHTML =
+    `<div class="it"><b>${s.seeds}</b><span>种子总量</span></div>` +
+    `<div class="it"><b>${s.vectors}</b><span>向量索引</span></div>` +
+    `<div class="it"><b style="color:${s.emb_ready ? '#7dc98f' : '#c9a37d'}">${s.emb_ready ? '在线' : '懒加载'}</b><span>bge 反射</span></div>` +
+    `<div class="it" style="min-width:140px"><b style="font-size:13px">${esc(s.time || '')}</b><span>服务器时间</span></div>`;
+  const d = await api('/api/xixi_log?limit=120');
+  $('xixiList').innerHTML = '';
+  const log = d.log || [];
+  if (!log.length) { $('xixiList').appendChild(el('div', 'empty', '暂无熏习记录')); return; }
+  log.forEach(r => {
+    $('xixiList').appendChild(el('div', 'logi',
+      `<span class="op">${OP_NAME[r.operator] || r.operator}</span>` +
+      `<span>${esc(r.seed_id ? '种子#' + r.seed_id : '')} ${esc(r.reason || '')}${r.delta != null ? ` <b style="color:#b8925a">${r.delta > 0 ? '+' : ''}${(+r.delta).toFixed(3)}</b>` : ''}</span>` +
+      `<span class="dt">${esc((r.created_at || '').slice(5, 19))}</span>`));
+  });
+}
+
+/* ── WebSocket 对话 ── */
+function initWs() {
+  if (ws) { try { ws.close(); } catch (e) {} }
+  ready = false; authFail = false;
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'init', owner_ai_id: ownerAiId, peer_ai_id: 0,
+    user_id: ME ? ME.id : 0, token: ME ? ME.token : '' }));
+  ws.onmessage = ev => {
+    if (ev.data instanceof ArrayBuffer) { playPcm(ev.data); return; }
+    let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+    if (d.type === 'ready') {
+      ready = true;
+      sysLine(d.mode === 'guide'
+        ? '已连接「' + d.ai_name + '」— 记忆归属「' + d.owner_name + '」，TA会边聊边帮TA找回记忆'
+        : '已连接「' + d.ai_name + '」— 记忆已就位');
+      loadHistory(); refreshPage(curPage);
+    }
+    else if (d.type === 'stt') { if (d.text) bubble('u', d.text); curAiBubble = null; curAiProactive = false; }
+    // 服务端标记：这一句不是"回应"，是她自己主动搭话（见 _run_turn autonomous）
+    else if (d.type === 'proactive') { curAiProactive = true; }
+    else if (d.type === 'reply_delta') {
+      if (!curAiBubble) { curAiBubble = bubble('a' + (curAiProactive ? ' proactive' : ''), ''); curAiProactive = false; }
+      curAiText += d.text; curAiBubble.textContent = curAiText;
+      chat.scrollTop = chat.scrollHeight;
+    }
+    else if (d.type === 'reply_done') { curAiBubble = null; curAiText = ''; curAiProactive = false; }
+    else if (d.type === 'memory') { if (d.written && d.written.length) memTag(d.written); }
+    // 中枢实时态只认「当前观察主体」：WS 会话的中枢可能挂在另一个本体上
+    //（guide 模式下对话的中枢归属记忆A=用户本体），不匹配就丢弃，绝不让它覆盖意识海。
+    else if (d.type === 'manas_state') {
+      if (Number(d.ai_id || 0) === Number(ownerAiId)) { if (window.HabitGraph) HabitGraph.setLive(d); renderManasHud(d); }
+    }
+    else if (d.type === 'notice') { toast(d.text || ''); }
+    else if (d.type === 'error') {
+      if (d.code === 'auth') { authFail = true; forceLogin(); }
+      else toast('出错：' + d.message);
+    }
+  };
+  ws.onclose = () => { ready = false; if (!authFail && !isMyAi(ownerAiId)) setTimeout(() => { if (ownerAiId && ME) initWs(); }, 2000); };
+  ws.onerror = () => {};
+}
+
+/* ── 末那识心智涌现中枢：控制台无 WS 会话，需显式载入热态 + 轮询实时激活值 ── */
+let manasTimer = null, manasTraitsLoaded = false, manasTraitsTick = 0;
+async function attachManas(oid) {
+  if (!ME || !oid) return;
+  try {
+    const r = await api('/api/amnesia/manas/attach?owner_ai_id=' + oid, { method: 'POST' });
+    if (r && r.ok) {
+      $('manas-idle').style.display = 'none';
+      $('manas-hud').style.display = 'flex';
+      startManasPoll();
+    }
+  } catch (e) {}
+}
+function startManasPoll() {
+  if (manasTimer) return;
+  pollManas();
+  manasTimer = setInterval(pollManas, 500);
+}
+function stopManas() {
+  if (manasTimer) { clearInterval(manasTimer); manasTimer = null; }
+  manasTraitsLoaded = false;
+  $('manas-idle').style.display = 'block';
+  $('manas-hud').style.display = 'none';
+}
+async function pollManas() {
+  if (!ownerAiId || !ME) return;
+  try {
+    const r = await api('/api/amnesia/manas?owner_ai_id=' + ownerAiId + '&top=80');
+    if (r.error || r.live === false) return;
+    if (window.HabitGraph) HabitGraph.setLive(r);
+    renderManasHud(r);
+    if (!manasTraitsLoaded) { manasTraitsLoaded = true; loadManasTraits(); }
+    else if (++manasTraitsTick % 10 === 0) loadManasTraits();   // 人格雷达也在动，每 5 秒刷一次
+  } catch (e) {}
+}
+/* ── 中栏底部：三个观测模型（一排三列，图形化表达变化）──
+   ① 觉醒盘：半环仪表，三段=潜意识/显意识/外显，当前那档点亮，白色指针=它此刻有多醒
+   ② 念头辐射：中心向外每条辐条=一颗同时浮着的念头，越长越强，最亮那条是当下主念
+   ③ 人格雷达：人格特质种子构成的多边形（性格的形状）
+   全部用 canvas 画（dpr 自适应），数值不再裸露，形状自己会说话。 */
+const OBS_W = 146, OBS_H = 110;
+function obsCtx(id) {
+  const cv = $(id);
+  if (!cv) return null;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (cv.width !== Math.round(OBS_W * dpr)) {
+    cv.width = Math.round(OBS_W * dpr);
+    cv.height = Math.round(OBS_H * dpr);
+    cv.style.width = OBS_W + 'px';
+    cv.style.height = OBS_H + 'px';
+  }
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, OBS_W, OBS_H);
+  return c;
+}
+const clamp01 = v => Math.max(0, Math.min(1, +v || 0));
+function drawObsAwake(dom, layer) {
+  const c = obsCtx('obs-awake');
+  if (!c) return;
+  const cx = OBS_W / 2, cy = OBS_H - 18, R = Math.min(OBS_W * .40, OBS_H * .68);
+  const A0 = Math.PI, A1 = 2 * Math.PI, LW = Math.max(9, R * .17);
+  const arc = (f, t, col, glow) => {
+    c.beginPath();
+    c.arc(cx, cy, R, A0 + (A1 - A0) * f, A0 + (A1 - A0) * t);
+    c.lineWidth = LW; c.lineCap = 'butt'; c.strokeStyle = col;
+    c.shadowColor = glow ? col : 'transparent';
+    c.shadowBlur = glow ? 16 : 0;
+    c.stroke();
+    c.shadowBlur = 0;
+  };
+  arc(0, .32, 'rgba(124,139,184,.20)');
+  arc(.32, .72, 'rgba(251,191,36,.18)');
+  arc(.72, .999, 'rgba(248,113,113,.18)');
+  // 当前在哪一档：那一段霓虹点亮
+  const seg = layer === 'manifest' ? [.72, .999, '#ff7b7b']
+    : layer === 'conscious' ? [.32, .72, '#ffd35c'] : [0, .32, '#b9c6e8'];
+  arc(seg[0], seg[1], seg[2], true);
+  // 刻度（数字感的细密线）
+  for (let i = 0; i <= 10; i++) {
+    const a = A0 + (A1 - A0) * i / 10;
+    const r1 = R - LW / 2 - 2, r2 = r1 - (i % 5 === 0 ? 8 : 4);
+    c.beginPath();
+    c.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    c.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    c.strokeStyle = 'rgba(150,200,255,.32)'; c.lineWidth = 1; c.stroke();
+  }
+  // 指针＝统治力（带光晕）
+  const a = A0 + (A1 - A0) * clamp01(dom);
+  c.beginPath();
+  c.moveTo(cx, cy);
+  c.lineTo(cx + Math.cos(a) * (R - LW / 2 - 3), cy + Math.sin(a) * (R - LW / 2 - 3));
+  c.strokeStyle = '#eaf4ff'; c.lineWidth = 2.4; c.lineCap = 'round';
+  c.shadowColor = 'rgba(160,210,255,.95)'; c.shadowBlur = 14; c.stroke(); c.shadowBlur = 0;
+  c.beginPath(); c.arc(cx, cy, 3, 0, 6.3); c.fillStyle = '#eaf4ff';
+  c.shadowColor = 'rgba(160,210,255,.9)'; c.shadowBlur = 14; c.fill(); c.shadowBlur = 0;
+}
+function drawObsThink(dom) {
+  const c = obsCtx('obs-think');
+  if (!c) return;
+  const cx = OBS_W / 2, cy = OBS_H / 2, R = Math.min(OBS_W * .40, OBS_H * .42);
+  [.5, .75, 1].forEach(f => {          // 同心刻度环（数字感）
+    c.beginPath(); c.arc(cx, cy, R * f + 4, 0, 6.3);
+    c.strokeStyle = 'rgba(140,190,255,.10)'; c.lineWidth = 1; c.stroke();
+  });
+  const list = (dom || []).slice(0, 8);
+  if (!list.length) {
+    c.font = '12px system-ui,sans-serif'; c.fillStyle = '#5d6472'; c.textAlign = 'center';
+    c.fillText('静默流转', cx, cy + 4);
+    return;
+  }
+  list.forEach((d, i) => {
+    const a = -Math.PI / 2 + (i / list.length) * Math.PI * 2;
+    const v = Math.max(.16, clamp01(d.activation));
+    const len = (R - 2) * v;
+    const lead = i === 0;
+    c.beginPath();
+    c.moveTo(cx, cy);
+    c.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+    c.strokeStyle = lead ? '#ffd0a8' : 'rgba(255,170,110,.55)';
+    c.lineWidth = lead ? 3 : 1.8; c.lineCap = 'round';
+    c.shadowColor = lead ? '#ffb066' : 'rgba(255,150,80,.45)';
+    c.shadowBlur = lead ? 18 : 7;
+    c.stroke(); c.shadowBlur = 0;
+    c.beginPath(); c.arc(cx + Math.cos(a) * len, cy + Math.sin(a) * len, lead ? 3.2 : 2, 0, 6.3);
+    c.fillStyle = lead ? '#fff1dc' : 'rgba(255,190,130,.85)';
+    c.shadowColor = '#ffb066'; c.shadowBlur = lead ? 18 : 8; c.fill(); c.shadowBlur = 0;
+  });
+  c.beginPath(); c.arc(cx, cy, 2.8, 0, 6.3); c.fillStyle = '#fff';
+  c.shadowColor = '#9fd0ff'; c.shadowBlur = 16; c.fill(); c.shadowBlur = 0;
+}
+function drawObsTrait(traits) {
+  const c = obsCtx('obs-trait');
+  if (!c) return;
+  const cx = OBS_W / 2, cy = OBS_H / 2, R = Math.min(OBS_W * .40, OBS_H * .42);
+  const ts = (traits || []).slice(0, 6);
+  if (!ts.length) {
+    c.font = '12px system-ui,sans-serif'; c.fillStyle = '#5d6472'; c.textAlign = 'center';
+    c.fillText('未成型', cx, cy + 4);
+    return;
+  }
+  if (ts.length < 3) {          // 轴太少构不成多边形，用条形
+    ts.forEach((t, i) => {
+      const y = cy - 10 + i * 20;
+      const v = Math.max(.05, clamp01(t.activation));
+      c.fillStyle = 'rgba(255,255,255,.10)'; c.fillRect(cx - 46, y, 92, 8);
+      c.fillStyle = '#7dffd0';
+      c.shadowColor = '#4fe8b0'; c.shadowBlur = 12;
+      c.fillRect(cx - 46, y, 92 * v, 8); c.shadowBlur = 0;
+    });
+    return;
+  }
+  const n = ts.length;
+  const pt = (i, r) => [cx + Math.cos(-Math.PI / 2 + i / n * 6.2832) * r,
+                        cy + Math.sin(-Math.PI / 2 + i / n * 6.2832) * r];
+  [.34, .67, 1].forEach(f => {
+    c.beginPath();
+    for (let i = 0; i <= n; i++) { const p = pt(i % n, R * f); i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]); }
+    c.strokeStyle = 'rgba(140,255,220,.12)'; c.lineWidth = 1; c.stroke();
+  });
+  for (let i = 0; i < n; i++) {
+    const p = pt(i, R);
+    c.beginPath(); c.moveTo(cx, cy); c.lineTo(p[0], p[1]);
+    c.strokeStyle = 'rgba(140,255,220,.10)'; c.lineWidth = 1; c.stroke();
+  }
+  c.beginPath();
+  ts.forEach((t, i) => {
+    const v = Math.max(.10, clamp01(t.activation));
+    const p = pt(i, R * v); i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]);
+  });
+  c.closePath();
+  c.fillStyle = 'rgba(80,230,180,.20)'; c.fill();
+  c.strokeStyle = '#7dffd0'; c.lineWidth = 1.8;
+  c.shadowColor = '#4fe8b0'; c.shadowBlur = 14; c.stroke(); c.shadowBlur = 0;
+  ts.forEach((t, i) => {
+    const p = pt(i, R);
+    c.beginPath(); c.arc(p[0], p[1], 2, 0, 6.3); c.fillStyle = '#c8ffe9';
+    c.shadowColor = '#4fe8b0'; c.shadowBlur = 12; c.fill(); c.shadowBlur = 0;
+  });
+}
+function renderManasHud(r) {
+  faceUpdate(r);   // 点阵人脸跟着同一份实时状态走
+  const layerName = { sub: '潜意识', conscious: '显意识', manifest: '外显' }[r.layer] || '潜意识';
+  const c = r.conception || {}, lead = c.lead || {};
+  drawObsAwake(+r.dominance || 0, r.layer || 'sub');
+  drawObsThink(r.dominant || []);
+  $('cap-awake').innerHTML = '觉醒 · <b>' + layerName + '</b>';
+  $('cap-think').innerHTML = '念头 · <b>' +
+    (lead.seed_id ? esc(String(lead.name || ('#' + lead.seed_id)).slice(0, 8)) : '静默') + '</b>';
+}
+async function loadManasTraits() {
+  try {
+    const r = await api('/api/amnesia/manas/traits?owner_ai_id=' + ownerAiId);
+    if (r.error) { $('cap-trait').textContent = '人格 · —'; return; }
+    const ts = r.traits || [];
+    drawObsTrait(ts);
+    const top = ts.slice().sort((a, b) => (+b.activation || 0) - (+a.activation || 0))[0];
+    $('cap-trait').innerHTML = '人格 · <b>' + (top ? esc(top.name) : '未成型') + '</b>';
+  } catch (e) {}
+}
+
+/* ── 线框人头：3D 网格 + 手写投影 ──
+   为什么不用照片点阵：那本质是"把一张照片铺上去"，身份感太强、不是"人脸"；
+   参考图那种"数字化人头"是 **3D 网格**。网格由 alaya/tools/gen_face_mesh.py 离线生成
+   （WaltHead 头模 → 顶点聚类 30³ → 约 1900 节点 / 5800 边，含顶点法线），
+   前端手写投影渲染（habit-graph.js 就是这个路子，不引 Three.js）。
+   三个关键（都是踩出来的）：
+     · **视角**：模型面朝 -x，`0°` 才是正脸（`180°` 是后脑勺、`90°/270°` 是侧脸）；
+     · **明暗来源**：用离线法线做光照（光从左上前方来）——单靠景深，正脸会平得读不出五官；
+     · **明暗曲线**：光照值要取 gamma（`FACE_GAMMA`）抬中间调——不然五官全落在最暗那一档，
+       看上去"有正脸没五官"（这是 22³ 聚类 + 无 gamma 两个原因叠加的结果）。
+   状态：统治力→整体明暗 · 心境(受)→色相（亮青↔冷蓝紫）· 呼吸→起伏 · 缓慢左右环视。 */
+const FACE_CV = 260;
+const FACE_YAW = 0;                       // 基准视角：正脸
+const FACE_SWAY = 0.30;                   // 环视摆幅（正脸附近微转，保持"正脸"感）
+const FACE_LIGHT = [-0.45, 0.55, 0.70];   // 光：左上前方
+const FACE_GAMMA = 0.65;                  // 光照值 gamma（抬中间调，五官才出得来）
+const FACE_EBK = 6;                       // 边的明暗档数
+const face = {
+  c: null, v: null, n: null, e: null, px: null, py: null, pk: null, pz: null, pl: null, last: 0,
+  bright: .9, brightT: .9, warm: .6, warmT: .6,
+};
+function faceInit() {
+  const cv = $('face-dot');
+  if (!cv) return;
+  cv.width = FACE_CV; cv.height = FACE_CV;
+  face.c = cv.getContext('2d');
+  faceLoad();
+  requestAnimationFrame(faceFrame);
+}
+async function faceLoad() {
+  // ⚠️ 文件名必须是 .mesh，不能是 .json —— nginx 有一条全局规则
+  //    location ~* \.(json|txt|md)$ { root .../static; try_files $uri =404; }
+  //    会把所有 .json 请求强制指向另一个目录，导致这里 404 拿到一段 HTML（曾踩）。
+  //    同理 .txt / .md 也不能用。换头模就用 alaya/tools/gen_face_mesh.py 重跑覆盖本文件。
+  try {
+    const d = await (await fetch('face_mesh.mesh')).json();
+    face.v = new Float32Array(d.v);
+    face.n = new Float32Array(d.n);
+    face.e = new Uint16Array(d.e);
+    const n = face.v.length / 3;
+    face.px = new Float32Array(n); face.py = new Float32Array(n);
+    face.pk = new Float32Array(n); face.pz = new Float32Array(n); face.pl = new Float32Array(n);
+    $('face-dot').classList.add('on');
+  } catch (err) {
+    console.warn('[face] 网格加载失败', err);
+  }
+}
+function faceUpdate(r) {
+  if (!r) return;
+  const v = String((r.conception || {}).vedana || '');
+  // 心境 → 色相：亮青（开心/平静）↔ 冷蓝紫（低落/担心）；整体保持"数字化"的蓝调
+  let w = .62;
+  if (/开心|高兴|欢喜|愉快|兴奋|幸福|感动|暖|轻松|平静/.test(v)) w = .9;
+  else if (/伤心|难过|痛苦|悲|哭|失落|委屈|孤独|担心|焦虑|紧张|不安|害怕|愧疚|生气|愤怒/.test(v)) w = .18;
+  face.warmT = w;
+  // 统治力 → 明暗（越"醒"越亮）
+  face.brightT = .72 + .45 * Math.min(1, (+r.dominance || 0) / .72);
+}
+function faceFrame(ts) {
+  requestAnimationFrame(faceFrame);
+  const c = face.c;
+  if (!c) return;
+  if (ts - face.last < 33) return;          // 30fps：不跟 3D 星云抢帧
+  face.last = ts;
+  const t = ts / 1000;
+  face.bright += (face.brightT - face.bright) * .05;
+  face.warm += (face.warmT - face.warm) * .04;
+  c.clearRect(0, 0, FACE_CV, FACE_CV);
+  if (!face.v) return;
+  const yaw = FACE_YAW + Math.sin(t * .26) * FACE_SWAY;
+  const pitch = 0.05;
+  const cyw = Math.cos(yaw), syw = Math.sin(yaw);
+  const cpi = Math.cos(pitch), spi = Math.sin(pitch);
+  const SC = FACE_CV * .74, CX = FACE_CV / 2, CY = FACE_CV / 2;
+  const gain = face.bright * (.95 + .05 * Math.sin(t * 1.15));      // 呼吸
+  const k = face.warm;
+  const R = 170 * k + 112 * (1 - k), G = 232 * k + 158 * (1 - k);
+  const { v, n: vn, e, px, py, pk, pz, pl } = face;
+  const nv = v.length / 3;
+  for (let i = 0; i < nv; i++) {
+    const x0 = v[i * 3], y0 = v[i * 3 + 1], z0 = v[i * 3 + 2];
+    const x = x0 * cyw + z0 * syw, z1 = -x0 * syw + z0 * cyw;
+    const y = y0 * cpi - z1 * spi, z2 = y0 * spi + z1 * cpi;
+    const kk = 2.9 / (2.9 + z2);                 // 越小=越近（z2 越负越近）
+    px[i] = CX + x * SC * kk;
+    py[i] = CY - y * SC * kk;
+    pk[i] = kk; pz[i] = z2;
+    // 法线同角度旋转 → 点乘光源：明暗（眼窝/鼻梁/脸颊的层次全在这里）
+    const a0 = vn[i * 3], b0 = vn[i * 3 + 1], c0 = vn[i * 3 + 2];
+    const nx = a0 * cyw + c0 * syw, nz1 = -a0 * syw + c0 * cyw;
+    const ny = b0 * cpi - nz1 * spi, nz2 = b0 * spi + nz1 * cpi;
+    const lam = nx * FACE_LIGHT[0] + ny * FACE_LIGHT[1] + nz2 * FACE_LIGHT[2];
+    pl[i] = lam > 0 ? Math.pow(lam, FACE_GAMMA) : 0;   // 抬中间调：不这样做五官全落在暗档里
+  }
+  c.strokeStyle = `rgb(${Math.round(R)},${Math.round(G)},255)`;
+  c.fillStyle = `rgb(${Math.min(255, Math.round(R + 55))},${Math.min(255, Math.round(G + 20))},255)`;
+  c.lineWidth = 1;
+  // ① 边：按"明暗 × 远近"分档（背光的一侧自然暗下去 → 通透，不糊成一片）
+  for (let b = 0; b < FACE_EBK; b++) {
+    c.beginPath();
+    for (let m = 0; m < e.length; m += 2) {
+      const i = e[m], j = e[m + 1];
+      const lam = (pl[i] + pl[j]) * .5 * ((pz[i] + pz[j]) > 0 ? .55 : 1);   // 远侧的线也压暗
+      let bi = Math.floor(lam * FACE_EBK);
+      bi = bi < 0 ? 0 : (bi > FACE_EBK - 1 ? FACE_EBK - 1 : bi);
+      if (bi !== b) continue;
+      c.moveTo(px[i], py[i]);
+      c.lineTo(px[j], py[j]);
+    }
+    c.globalAlpha = Math.max(.03, Math.min(.9, (.06 + b * .15) * gain));
+    c.stroke();
+  }
+  // ② 节点：亮的点出来（暗侧几乎不点）
+  for (let b = 0; b < 4; b++) {
+    c.beginPath();
+    for (let i = 0; i < nv; i++) {
+      const lam = pl[i] * (pz[i] > 0 ? .55 : 1);
+      let bi = Math.floor(lam * 4);
+      bi = bi < 0 ? 0 : (bi > 3 ? 3 : bi);
+      if (bi !== b) continue;
+      const r = 1.0 + 1.6 * pk[i];
+      c.moveTo(px[i] + r, py[i]);
+      c.arc(px[i], py[i], r, 0, 6.3);
+    }
+    c.globalAlpha = Math.max(0, Math.min(1, (.10 + b * .30) * gain));
+    c.fill();
+  }
+  c.globalAlpha = 1;
+}
+function bubble(cls, text) {
+  const d = el('div', 'bubble ' + cls); d.textContent = text;
+  chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
+}
+/* ── 历史记录：默认最近20条，滚到顶懒加载更早 ── */
+let histOldestId = 0, histHasMore = false, histLoading = false;
+function histUrl(extra) {
+  // 对话流水按「记忆归属A × 出场本体B」存（A=我本人的 AI 本体，B=当前选中的本体），
+  // 所以查「这个本体与我的对话」永远是 (myAiId, ownerAiId)——与引擎存取口径一致。
+  return '/api/history?owner_ai_id=' + (myAiId || ownerAiId) + '&peer_ai_id=' + ownerAiId + (extra || '');
+}
+async function loadHistory() {
+  const data = await api(histUrl());
+  const msgs = data.messages || [];
+  chat.innerHTML = '';
+  histHasMore = !!data.has_more;
+  histOldestId = msgs.length ? msgs[0].id : 0;
+  msgs.forEach(m => {
+    if (m.content.startsWith('【画面】')) sceneLine(m.content);
+    else bubble(m.role === 'user' ? 'u' : 'a', m.content);
+  });
+  if (!msgs.length) sysLine('（还没有对话记录，开始聊吧）');
+  chat.scrollTop = chat.scrollHeight;
+}
+chat.onscroll = async () => {
+  if (!histHasMore || histLoading || chat.scrollTop > 40 || !ownerAiId) return;
+  histLoading = true;
+  const oldH = chat.scrollHeight;
+  const data = await api(histUrl('&before_id=' + histOldestId));
+  const msgs = data.messages || [];
+  histHasMore = !!data.has_more;
+  if (msgs.length) {
+    histOldestId = msgs[0].id;
+    const frag = document.createDocumentFragment();
+    msgs.forEach(m => {
+      const d = el('div', 'bubble ' + (m.content.startsWith('【画面】') ? 'scene' : (m.role === 'user' ? 'u' : 'a')));
+      d.textContent = m.content; frag.appendChild(d);
+    });
+    chat.prepend(frag);
+    chat.scrollTop = chat.scrollHeight - oldH;   // 视口钉在原位置
+  }
+  histLoading = false;
+};
+function sysLine(t) { chat.appendChild(el('div', 'sys', esc(t))); chat.scrollTop = chat.scrollHeight; }
+function sceneLine(t) { chat.appendChild(el('div', 'bubble scene', esc(t))); chat.scrollTop = chat.scrollHeight; }
+function imgBubble(cls, url) {
+  const d = el('div', 'bubble ' + cls);
+  const im = document.createElement('img'); im.src = url;
+  d.appendChild(im); chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
+}
+function memTag(seeds) {
+  chat.appendChild(el('div', 'memtag', '🌱 记入记忆：' + seeds.map(s => esc(s.seed_text)).join('；')));
+  chat.scrollTop = chat.scrollHeight;
+}
+
+/* ── TTS 播放（顺序调度，防噼啪防断档） ── */
+function playCtx() {
+  if (!aCtx) aCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+  if (aCtx.state === 'suspended') aCtx.resume();
+  return aCtx;
+}
+function playPcm(buf) {
+  const ctx = playCtx();
+  const i16 = new Int16Array(buf);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  const aBuf = ctx.createBuffer(1, f32.length, 48000);
+  aBuf.getChannelData(0).set(f32);
+  playQ.push(aBuf);
+  if (!ttsStartAt) ttsStartAt = Date.now();
+  if (!playing) drainPlay();
+}
+function drainPlay() {
+  const ctx = playCtx();
+  if (!playing) {
+    // 首次启动：给一个极小的调度余量，避免第一块因调度延迟被截头
+    playAt = ctx.currentTime + 0.02;
+  }
+  playing = true;
+  // 一次性把队列中所有块按"上一块结束时刻"首尾相接排程（真正的无缝拼接）。
+  // 旧实现每块只在 onended 后调度下一块——onended 触发时 currentTime 已越过
+  // playAt，max(currentTime+0.02, playAt) 必然取 currentTime+0.02，于是每块之间
+  // 都被硬插 20ms 空档；160ms 一块即每 160ms 断一次，听感就是"噼里啪啦"。
+  // 排程到未来时刻由 WebAudio 时钟精确对齐，块间零间隙、零重叠。
+  while (playQ.length) {
+    const aBuf = playQ.shift();
+    const src = ctx.createBufferSource();
+    src.buffer = aBuf; src.connect(ctx.destination);
+    const startAt = Math.max(playAt, ctx.currentTime + 0.005);
+    src.start(startAt);
+    playAt = startAt + aBuf.duration;
+  }
+  // 全部排程完毕后，用最后一个块的结束时刻回调收尾（队列可能又进了新块）
+  const tail = ctx.createBufferSource();
+  tail.buffer = ctx.createBuffer(1, 1, 48000);
+  tail.connect(ctx.destination);
+  tail.start(playAt);
+  tail.onended = () => {
+    if (playQ.length) { drainPlay(); return; }
+    playing = false; ttsStartAt = 0; playAt = 0;
+    playEndAt = Date.now();   // 记录播放结束时刻，供 VAD 尾音静默期判定
+  };
+}
+function stopPlay() {
+  playQ = []; playAt = 0; playing = false;
+  if (aCtx) { try { aCtx.close(); } catch (e) {} aCtx = null; }
+}
+
+/* ── 录音 + VAD（静音800ms自动提交；播放中说话=打断） ──
+   自打断防治三重门控（借鉴sisi_web实证参数）：开播保护期1.2s + 高阈值0.06 + 持续3帧(约380ms) */
+// 静音判定 800ms：实测 2026-10-24 定。600ms 太短——用户一句话中间换气就被当成"说完了"。
+// 这里不是延时大头（省下的 0.2 秒换不来体验），延时要去处理链路里查。
+const RMS_ON = 0.018, SILENCE_MS = 800;
+// 起录门控：与打断门控(BARGE_FRAMES)对称——**人说话是连续多帧的，瞬态噪声不是**。
+// 旧实现只看单帧能量，鼠标"咔哒"、敲桌、碰麦克风这类脉冲（<100ms）一帧就过线，
+// 立刻判为"开始说话"并上送 400ms 音频，ASR 对短噪声必然幻觉（"对，对，对"）。
+// 要求连续 2 帧（约 256ms）才认起录；延迟由预滚缓冲(PRE_ROLL_MS=320)补回，不丢首字。
+const ONSET_FRAMES = 2;
+// 话中回应：用户说到一半停顿换气（450ms 短停顿，还没说完）时，发一次 interim，
+// 让 AI 有机会应一声「嗯/对/继续」表示在听——仿真人对话的跟随感。
+// 短停顿 < 说完静音(900ms)，两者不冲突：先到 450ms 发 interim，再到 900ms 才提交。
+const MID_PAUSE_MS = 450;
+const BARGE_RMS = 0.06, BARGE_FRAMES = 3, BARGE_GRACE_MS = 1200, BARGE_COOLDOWN_MS = 3000;
+// 播放尾音静默期：TTS 播放刚结束的一小段时间内，麦克风仍可能拾到扬声器余音/房间混响。
+// 若此时立刻开录，AI 会把自己的话当成用户说话识别回来，形成"AI 回答自己"的回声闭环。
+// 这不是兜底——扬声器余音在物理上确实存在，必须等它散尽再听人说话。
+const PLAY_TAIL_MS = 700;
+// 预滚缓冲：语音起点被 VAD 判到之前，用户其实已经开口了（"还"字的气声/起始音）。
+// 旧实现 speech=false 期间音频帧直接丢弃，用户第一个字永远录不到——表现为
+// "只录到最后半句话"。这里保留最近 PRE_ROLL_MS 的音频帧，判到起点时一并补送。
+const PRE_ROLL_MS = 320;
+let ttsStartAt = 0, bargeFrames = 0, bargeCooldownUntil = 0, playEndAt = 0;
+let preRoll = [];   // 语音起点前的预滚帧（Float32Array），判到起点时补送
+let midAckSent = false;   // 本段语音是否已发过 interim（每段停顿只应一声，不重复）
+let onsetFrames = 0;      // 起录判定：连续过线帧数（瞬态噪声凑不满 ONSET_FRAMES 帧）
+let lastFrameId = '';     // 开口那一刻截的画面（在 speech-start 时异步上传，见下）
+$('mic').onclick = () => recording ? stopRec() : startRec();
+
+async function startRec() {
+  if (isMyAi(ownerAiId)) { toast('这是你自己的AI本体，只能查看 · 对话请切换到其它AI本体'); return; }
+  if (!ready) { toast('连接中，稍候再试'); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) { toast('无法访问麦克风：' + e.message); return; }
+  ctxIn = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+  srcNode = ctxIn.createMediaStreamSource(stream);
+  proc = ctxIn.createScriptProcessor(2048, 1, 1);
+  speech = false; silenceMs = 0; bargeFrames = 0; ttsStartAt = 0; bargeCooldownUntil = 0; playEndAt = 0;
+  preRoll = []; midAckSent = false; onsetFrames = 0;
+  proc.onaudioprocess = async e => {
+    if (!recording) return;
+    const f = e.inputBuffer.getChannelData(0);
+    let sum = 0; for (let i = 0; i < f.length; i++) sum += f[i] * f[i];
+    const rms = Math.sqrt(sum / f.length);
+    if (playing) {
+      // 播放期打断门控：开播保护期 → 高阈值 → 持续多帧，三关全过才打断
+      const now = Date.now();
+      if (now - ttsStartAt < BARGE_GRACE_MS || now < bargeCooldownUntil) return;
+      if (rms > BARGE_RMS) {
+        if (++bargeFrames >= BARGE_FRAMES) doInterrupt();
+      } else {
+        bargeFrames = Math.max(0, bargeFrames - 1);
+      }
+    } else {
+      // 播放尾音静默期：AI 刚说完话，扬声器余音未散，此时不判语音起点，
+      // 避免把自己的话录回来当成用户输入（回声闭环）。
+      if (Date.now() - playEndAt < PLAY_TAIL_MS) return;
+      if (rms > RMS_ON) {
+        // 起录门控（与打断门控对称）：连续 ONSET_FRAMES 帧过线才认"开始说话"。
+        // 瞬态脉冲（鼠标点击/敲桌/碰麦）只有一两帧，不构成说话——旧实现只看单帧，
+        // 鼠标点一下就被当成开口并上送 400ms 噪声，ASR 必然幻觉出"对，对，对"。
+        onsetFrames++;
+        if (!speech && onsetFrames >= ONSET_FRAMES) {
+          speech = true;
+          midAckSent = false;
+          ws.send(JSON.stringify({ type: 'start' }));
+          // 补送预滚帧：含判定期那两帧在内，开口的第一个字一并补回去，不丢首字
+          for (const pf of preRoll) sendPcm(pf);
+          preRoll = [];
+          // 摄像头开着：开口这一刻就异步截帧上传，与"用户继续说话"并行。
+          // 过去是在 stop 时 await uploadFrame()，把那 0.3~1.5 秒（截图+上传+存盘）
+          // 整段加进了回复延时（用户反馈"说完要等十秒"的一部分）。
+          lastFrameId = '';
+          if (camOn) uploadFrame().then(id => { lastFrameId = id || ''; }).catch(() => {});
+          $('hint').textContent = '聆听中… 说完即答';
+        }
+        if (speech) silenceMs = 0;
+      } else {
+        // 静音帧：起录计数必须清零——否则"过线一帧、静音一帧、再过线一帧"
+        // 会被算成连续两帧，瞬态噪声照样蒙混过关。
+        onsetFrames = 0;
+        if (speech) {
+          silenceMs += (f.length / 16000) * 1000;
+          // 话中回应：短停顿(450ms)且还没说完 → 发一次 interim，让 AI 有机会应一声
+          // 「嗯/对/继续」表示在听。只发一次，避免每帧重复触发。
+          if (!midAckSent && silenceMs >= MID_PAUSE_MS && silenceMs < SILENCE_MS) {
+            midAckSent = true;
+            ws.send(JSON.stringify({ type: 'interim' }));
+          }
+          if (silenceMs >= SILENCE_MS) {
+            speech = false;
+            // 画面已在开口时上传好（见 speech-start）；这里绝不再等网络。
+            ws.send(JSON.stringify({ type: 'stop', frame_id: camOn ? lastFrameId : '',
+                                     silence_ms: Math.round(silenceMs) }));
+            $('hint').textContent = '思考中…';
+          }
+        }
+      }
+      if (speech) {
+        sendPcm(f);
+      } else if (!playing) {
+        // 未开口：把当前帧压入预滚缓冲（只留最近 PRE_ROLL_MS）
+        // ⚠️ 必须 slice() 拷贝：ScriptProcessor 的 inputBuffer 由浏览器**复用**，
+        //   getChannelData(0) 每次返回的是同一个 Float32Array，下一帧回调就把它的内容
+        //   覆盖掉了。直接 push(f) 存的是引用，等起录时再回放，这 3 帧"预滚"里装的全是
+        //   当前这一帧（开口第一字）的副本——于是第一个音节被连发 3+1 次，ASR 听成
+        //   「我我我爸叫张建国」「说说说，我爷爷叫什么名字」。这就是每句话开头叠字的根。
+        preRoll.push(f.slice());
+        const maxFrames = Math.ceil(PRE_ROLL_MS / ((f.length / 16000) * 1000));
+        while (preRoll.length > maxFrames) preRoll.shift();
+      }
+    }
+  };
+  // ScriptProcessor 必须挂在通向 destination 的图上才会被驱动，但它绝不能直接接
+  // destination——ScriptProcessor 的输出缓冲初始内容就是麦克风输入，直接接就等于把
+  // 麦克风原声回放到扬声器：用户听到自己、扬声器声音又被自己麦克风拾回（自听+回声）。
+  // 经一个 0 增益汇点落地，图是通的，声音出不去（voice.js 里正是靠"不接 destination"避免）。
+  muteGain = ctxIn.createGain(); muteGain.gain.value = 0;
+  srcNode.connect(proc); proc.connect(muteGain); muteGain.connect(ctxIn.destination);
+  recording = true; $('mic').classList.add('rec');
+  $('hint').textContent = '聆听中… 说完即答';
+}
+function sendPcm(f) {
+  const i16 = new Int16Array(f.length);
+  for (let i = 0; i < f.length; i++) i16[i] = Math.max(-32768, Math.min(32767, f[i] * 32767));
+  if (ws && ws.readyState === 1) ws.send(i16.buffer);
+}
+function stopRec() {
+  recording = false;
+  if (speech) { speech = false; ws.send(JSON.stringify({ type: 'stop', silence_ms: Math.round(silenceMs) })); }
+  preRoll = [];
+  if (proc) { try { proc.disconnect(); } catch (e) {} proc = null; }
+  if (srcNode) { try { srcNode.disconnect(); } catch (e) {} srcNode = null; }
+  if (muteGain) { try { muteGain.disconnect(); } catch (e) {} muteGain = null; }
+  if (ctxIn) { try { ctxIn.close(); } catch (e) {} ctxIn = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('mic').classList.remove('rec');
+  $('hint').textContent = '点按开始对话 · 说完自动回复 · 说话即打断';
+}
+function doInterrupt() {
+  bargeFrames = 0;
+  bargeCooldownUntil = Date.now() + BARGE_COOLDOWN_MS;
+  ws.send(JSON.stringify({ type: 'interrupt' }));
+  stopPlay();
+  sysLine('（已打断）');
+  curAiBubble = null; curAiText = '';
+  if (!speech) { speech = true; ws.send(JSON.stringify({ type: 'start' })); }
+  $('hint').textContent = '聆听中… 说完即答';
+}
+
+/* ── 摄像头：背景画面 + 双击切前后置 + 浮动半透明气泡 + 说完话自动截帧 ── */
+let camOn = false, camStream = null, camFacing = 'environment';
+$('camBtn').onclick = () => camOn ? stopCam() : startCam();
+async function startCam() {
+  const cons = { video: { facingMode: camFacing, width: { ideal: 1280 } }, audio: false };
+  try { camStream = await navigator.mediaDevices.getUserMedia(cons); }
+  catch (e) {
+    try { camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); camFacing = 'environment'; }
+    catch (e2) { toast('无法访问摄像头：' + e2.message); return; }
+  }
+  const v = $('cam');
+  v.srcObject = camStream; v.style.display = 'block';
+  await v.play().catch(() => {});
+  camOn = true; $('camBtn').classList.add('on');
+  chat.classList.add('overcam');
+  $('hint').textContent = '摄像头已开 · 双击画面换前后 · 说话自动带画面';
+}
+function stopCam() {
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null; camOn = false;
+  $('cam').style.display = 'none'; $('camBtn').classList.remove('on');
+  chat.classList.remove('overcam');
+  if (!recording) $('hint').textContent = '点按开始对话 · 说完自动回复 · 说话即打断';
+}
+$('cam').ondblclick = async () => {
+  camFacing = camFacing === 'environment' ? 'user' : 'environment';
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: camFacing }, audio: false });
+    $('cam').srcObject = camStream;
+  } catch (e) { toast('切换失败：' + e.message); }
+};
+function grabFrameBlob() {
+  const v = $('cam');
+  if (!camOn || !v.videoWidth) return Promise.resolve(null);
+  // 640 长边足够 VL 看清"在哪、有谁、在做什么"。1280 会让视觉 token 翻四倍，
+  // 而看图本来就是回复链路里最慢的一步（实测 1280 时 VL 要 20 秒以上）。
+  const MAX = 640;
+  let w = v.videoWidth, h = v.videoHeight;
+  const r = Math.min(1, MAX / Math.max(w, h)); w = Math.round(w * r); h = Math.round(h * r);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(v, 0, 0, w, h);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.8));
+}
+async function uploadFrame() {
+  if (!camOn) return '';
+  const blob = await grabFrameBlob();
+  if (!blob) return '';
+  const fd = new FormData(); fd.append('file', blob, 'frame.jpg');
+  try {
+    const r = await fetch(API_BASE + 'api/frame', authOpts({ method: 'POST', body: fd }));
+    return (await r.json()).frame_id || '';
+  } catch (e) { toast('画面上传失败：' + e.message); return ''; }
+}
+
+/* ── 相册/文件：图片压缩≤500k后发送；txt/pdf/docx/pptx提取文本随对话送出 ── */
+$('albumBtn').onclick = () => $('fileIn').click();
+$('fileIn').onchange = async () => {
+  const f = $('fileIn').files[0];
+  $('fileIn').value = '';
+  if (!f || !ready) { if (f) toast('连接中，稍候再试'); return; }
+  toast('发送中…');
+  const fd = new FormData(); fd.append('file', f, f.name);
+  let d;
+  try { d = await (await fetch(API_BASE + 'api/upload', authOpts({ method: 'POST', body: fd }))).json(); }
+  catch (e) { toast('上传失败：' + e.message); return; }
+  if (d.error) { toast(d.error); return; }
+  if (d.kind === 'image') {
+    const blob = await compressImage(f, 500);
+    imgBubble('u', URL.createObjectURL(blob || f));
+    ws.send(JSON.stringify({ type: 'material', kind: 'image', name: d.name || '照片', text: d.desc }));
+  } else {
+    bubble('u', '📄 ' + d.name);
+    // 资料正文走 material：如意把它当"资料"读，不会当成你刚说出口的话
+    ws.send(JSON.stringify({ type: 'material', kind: 'text', name: d.name, text: d.text }));
+  }
+  $('hint').textContent = '思考中…';
+};
+async function compressImage(file, maxKB = 500) {
+  let img;
+  try { img = await createImageBitmap(file); }
+  catch (e) { return null; }
+  const MAX = 1600;
+  let w = img.width, h = img.height;
+  const r = Math.min(1, MAX / Math.max(w, h)); w = Math.round(w * r); h = Math.round(h * r);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(img, 0, 0, w, h);
+  let q = 0.8, blob = null;
+  while (q >= 0.35) {
+    blob = await new Promise(res => c.toBlob(res, 'image/jpeg', q));
+    if (blob && blob.size <= maxKB * 1024) break;
+    q -= 0.12;
+  }
+  return blob;
+}
+
+/* ── 音色：外部 TTS 的音色清单（控制台 tts.voices），可切换该本体的说话音色 ── */
+async function openVoiceSheet() {
+  if (!ownerAiId) return toast('连接中，稍候再试');
+  openSheet('音色');
+  const body = $('sheetBody'); body.innerHTML = '<div class="empty">加载中…</div>';
+  let d;
+  try { d = await api('/api/voices?owner_ai_id=' + ownerAiId); }
+  catch (e) { body.innerHTML = '<div class="empty">加载失败</div>'; return; }
+  const list = d.voices || [];
+  body.innerHTML = '';
+  if (!list.length) {
+    body.appendChild(el('div', 'empty', '还没有配置音色：我的资料 → 模型设置 → TTS 音色清单'));
+    return;
+  }
+  list.forEach(v => {
+    const row = el('div', 'vrow');
+    row.innerHTML = `<span class="vt">${esc(v.emoji || '🔊')}</span>` +
+      `<span class="vn"><b>${esc(v.name || v.id)}</b><span>${esc(v.id)}${v.in_use ? ' · 使用中' : ''}</span></span>`;
+    const ops = el('span', 'vop');
+    const bUse = el('button', 'vbtn', v.in_use ? '✓' : '用');
+    bUse.title = v.in_use ? '当前音色' : '设为这个本体的音色';
+    bUse.onclick = async () => {
+      if (v.in_use) return;
+      try {
+        const r = await api(`/api/voices/select?owner_ai_id=${ownerAiId}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voice_id: v.id }) });
+        if (r.error || r.detail) return toast(r.error || r.detail);
+        toast('已切换音色：' + (v.name || v.id));
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'voice', voice: v.id }));
+        openVoiceSheet();
+      } catch (e) { toast('切换失败：' + e.message); }
+    };
+    ops.appendChild(bUse);
+    row.appendChild(ops);
+    body.appendChild(row);
+  });
+}
+
+/* ── 我的形象：形象照列表（上传→压缩800k→VLM第一人称描述→写入记忆；点击放大） ── */
+function openLightbox(src) {
+  const lb = $('lightbox');
+  lb.querySelector('img').src = src;
+  lb.classList.add('on');
+}
+$('lightbox').onclick = () => $('lightbox').classList.remove('on');
+async function openFaceSheet() {
+  if (!ownerAiId) return toast('连接中，稍候再试');
+  openSheet('我的形象');
+  const body = $('sheetBody'); body.innerHTML = '<div class="empty">加载中…</div>';
+  const d = await api('/api/faces?owner_ai_id=' + ownerAiId);
+  const faces = d.faces || [];
+  body.innerHTML = '';
+  const up = el('div', 'faceup', '＋ 上传形象照（上传后TA会记住自己的样子）');
+  up.onclick = () => $('faceIn').click();
+  body.appendChild(up);
+  if (!faces.length) { body.appendChild(el('div', 'empty', '还没有形象照')); return; }
+  const grid = el('div', 'facegrid');
+  faces.forEach(f => {
+    const card = el('div', 'facecard');
+    const im = document.createElement('img');
+    im.src = API_BASE + `api/faces/${f.id}/file?${authQ({ t: Date.now() })}`;
+    im.onclick = () => openLightbox(im.src);
+    card.appendChild(im);
+    if (f.descr) card.appendChild(el('div', 'fd', esc(f.descr)));
+    const ops = el('div', 'fops');
+    const bDel = el('button', 'vbtn red', '🗑 删除');
+    bDel.onclick = () => {
+      if (bDel.dataset.arm) { delFace(f, card); return; }
+      bDel.dataset.arm = '1'; bDel.classList.add('confirm'); bDel.textContent = '确认删除？';
+      setTimeout(() => { delete bDel.dataset.arm; bDel.classList.remove('confirm'); bDel.textContent = '🗑 删除'; }, 2600);
+    };
+    ops.appendChild(bDel);
+    card.appendChild(ops);
+    grid.appendChild(card);
+  });
+  body.appendChild(grid);
+}
+async function delFace(f, card) {
+  try {
+    const d = await api('/api/faces/' + f.id, { method: 'DELETE' });
+    if (d.error) return toast(d.error || '删除失败');
+    card.remove(); toast('已删除');
+    if (!$('sheetBody').querySelector('.facecard')) $('sheetBody').appendChild(el('div', 'empty', '还没有形象照'));
+  } catch (e) { toast('删除失败：' + e.message); }
+}
+$('faceIn').onchange = async () => {
+  const f = $('faceIn').files[0];
+  $('faceIn').value = '';
+  if (!f || !ownerAiId) return;
+  toast('处理中…');
+  const blob = await compressImage(f, 800);
+  const fd = new FormData(); fd.append('file', blob || f, 'face.jpg');
+  try {
+    const d = await api('/api/faces?owner_ai_id=' + ownerAiId, { method: 'POST', body: fd });
+    if (d.error) return toast(d.error);
+    toast('✓ 已上传，TA从记忆里认识了自己的长相');
+    openFaceSheet();
+  } catch (e) { toast('上传失败：' + e.message); }
+};
+
+/* ── 习气网络 3D 星云：点击星球 → 记忆种子编辑弹窗 ── */
+const SEED_TYPE_NAMES = {
+  event: '事件', value: '属性/偏好', style: '风格', thought: '念头',
+  opinion: '见解', insight: '领悟', imagination: '联想', curiosity: '好奇',
+  skill: '对话技能', person: '人物', trait: '人格特质', sensory: '感官',
+};
+const SEED_STATE_NAMES = { confirmed: '已确认', temp: '临时', superseded: '已被修正' };
+async function openSeedSheet(hit) {
+  const oid = ownerAiId;   // 观察主体：种子弹窗的一切读写都落在当前选中的本体上
+  openSheet('记忆种子 #' + hit.seed_id);
+  const body = $('sheetBody');
+  body.innerHTML = '<div class="empty">读取中…</div>';
+  let d;
+  try {
+    d = await api('/api/amnesia/seed?seed_id=' + hit.seed_id + '&owner_ai_id=' + oid);
+  } catch (e) { body.innerHTML = ''; body.appendChild(el('div', 'empty', '读取失败：' + e.message)); return; }
+  if (d.error) { body.innerHTML = ''; body.appendChild(el('div', 'empty', d.error)); return; }
+  const s = d.seed, links = d.links || [];
+  body.innerHTML = '';
+
+  // 内容（可编辑）
+  body.appendChild(el('div', 'sfld', '记忆内容'));
+  const ta = el('textarea', 'sta'); ta.value = s.seed_text || ''; ta.maxLength = 6000; ta.rows = 3;
+  body.appendChild(ta);
+
+  // 关于谁
+  body.appendChild(el('div', 'sfld', '关于谁（留空=本人）'));
+  const subj = el('input', 'sinp'); subj.value = (s.subject && s.subject !== 'self') ? s.subject : '';
+  subj.placeholder = '如：张艳'; subj.maxLength = 64;
+  body.appendChild(subj);
+
+  // 类型（文本标签点选）
+  body.appendChild(el('div', 'sfld', '种子类型'));
+  const trow = el('div', 'frow');
+  Object.entries(SEED_TYPE_NAMES).forEach(([k, n]) => {
+    const t = el('div', 'ftag' + (s.seed_type === k ? ' on' : ''), n);
+    t.onclick = () => { trow.querySelectorAll('.ftag').forEach(x => x.classList.remove('on')); t.classList.add('on'); t.dataset.pick = k; };
+    if (s.seed_type === k) t.dataset.pick = k;
+    trow.appendChild(t);
+  });
+  body.appendChild(trow);
+
+  // 状态（文本标签点选）
+  body.appendChild(el('div', 'sfld', '熏习状态'));
+  const srow = el('div', 'frow');
+  Object.entries(SEED_STATE_NAMES).forEach(([k, n]) => {
+    const t = el('div', 'ftag' + (s.state === k ? ' on' : ''), n);
+    t.onclick = () => { srow.querySelectorAll('.ftag').forEach(x => x.classList.remove('on')); t.classList.add('on'); t.dataset.pick = k; };
+    if (s.state === k) t.dataset.pick = k;
+    srow.appendChild(t);
+  });
+  body.appendChild(srow);
+
+  // 权重（滑块 + 数值）——上限分档：风格种子是「硬规则」层级（基线 3.0，可累积到 4.0），
+  // 普通记忆种子封顶 2.0。滑块必须按真实类型取上限，否则风格种子会显示成 3.00 却拖不动、一保存就被压回 2.0。
+  const wCap = s.seed_type === 'style' ? 4 : 2;
+  body.appendChild(el('div', 'sfld', '权重（熏习强度 0~' + wCap + '）'));
+  const wrow = el('div', 'wrow');
+  const wsl = el('input'); wsl.type = 'range'; wsl.min = '0'; wsl.max = String(wCap); wsl.step = '0.01'; wsl.value = String(Math.min(wCap, s.weight));
+  const wval = el('span', 'wval', (+s.weight).toFixed(2));
+  wsl.oninput = () => { wval.textContent = (+wsl.value).toFixed(2); };
+  wrow.appendChild(wsl); wrow.appendChild(wval);
+  body.appendChild(wrow);
+
+  // 只读元信息
+  const meta = [
+    ['记忆ID', '#' + s.seed_id],
+    ['回忆次数', s.recall_count + ' 次'],
+    ['记忆时间', (s.seed_date || '').slice(0, 10)],
+    ['最近想起', s.last_recalled_at ? s.last_recalled_at.slice(0, 19) : '从未'],
+    ['来源通道', s.sense_id || 'voice'],
+    ['情绪', s.emotion_word || '—'],
+    ['场景', s.scene || '—'],
+    ['人生阶段', s.life_stage || '—'],
+    ['置信度', (+s.confidence).toFixed(2)],
+  ];
+  const mbox = el('div', 'smeta');
+  meta.forEach(([k, v]) => mbox.appendChild(el('div', 'urow', `<span class="k">${k}</span><span class="v">${esc(String(v))}</span>`)));
+  body.appendChild(mbox);
+
+  if (s.raw_text) {
+    body.appendChild(el('div', 'sfld', '原话证据'));
+    body.appendChild(el('div', 'sev', '「' + esc(String(s.raw_text).slice(0, 300)) + '」'));
+  }
+
+  // 关联种子（习气网络里的突触）
+  body.appendChild(el('div', 'sfld', '关联记忆（' + links.length + '）'));
+  if (!links.length) {
+    body.appendChild(el('div', 'empty', '这颗种子暂无突触——它还没和别的记忆共现过'));
+  } else {
+    const lbox = el('div', 'slinks');
+    links.forEach(l => {
+      const rel = l.relation_type === 'corr' ? '修正' : '共现';
+      const row = el('div', 'slink',
+        `<span class="r">${rel}</span><span class="t">${esc(l.text)}</span><span class="w">${l.weight.toFixed(2)}</span>`);
+      row.onclick = () => { closeSheet(); setTimeout(() => openSeedSheet({ seed_id: l.seed_id }), 260); };
+      lbox.appendChild(row);
+    });
+    body.appendChild(lbox);
+  }
+
+  // 操作按钮
+  const btns = el('div', 'sbtns');
+  const bok = el('button', 'sbtnp', '保存修改');
+  const bdel = el('button', 'sbtd', '彻底删除');
+  bok.onclick = async () => {
+    const pickT = trow.querySelector('.ftag.on');
+    const pickS = srow.querySelector('.ftag.on');
+    const payload = {
+      seed_id: s.seed_id, owner_ai_id: oid,
+      seed_text: ta.value.trim(), subject: subj.value.trim() || 'self',
+      seed_type: pickT ? pickT.dataset.pick : s.seed_type,
+      state: pickS ? pickS.dataset.pick : s.state,
+      weight: +wsl.value,
+    };
+    if (!payload.seed_text) return toast('记忆内容不能为空');
+    bok.disabled = true;
+    try {
+      const r = await api('/api/amnesia/seed/update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (r.error) { toast(r.error); bok.disabled = false; return; }
+      toast('✓ 记忆已修正');
+      closeSheet();
+      if (window.HabitGraph) HabitGraph.load('owner_ai_id=' + oid);
+      if (curPage === 'seeds') loadSeeds();
+    } catch (e) { toast('保存失败：' + e.message); bok.disabled = false; }
+  };
+  bdel.onclick = () => { askDeleteSeed(s.seed_id, oid, s.seed_text); };
+  btns.appendChild(bok); btns.appendChild(bdel);
+  body.appendChild(btns);
+}
+
+/* 删除确认（自定义弹窗，禁用 confirm） */
+function askDeleteSeed(seedId, oid, text) {
+  const body = $('sheetBody');
+  body.innerHTML = '';
+  body.appendChild(el('div', 'sev', '「' + esc(String(text || '').slice(0, 80)) + '」'));
+  body.appendChild(el('div', 'sfld', '这颗记忆将从习气网络彻底删除，它的突触关联一并消失，不可恢复。'));
+  const btns = el('div', 'sbtns');
+  const byes = el('button', 'sbtd', '确认删除');
+  const bno = el('button', 'sbtnp', '取消');
+  bno.onclick = () => { closeSheet(); };
+  byes.onclick = async () => {
+    byes.disabled = true;
+    try {
+      const r = await api('/api/amnesia/seed/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seed_id: seedId, owner_ai_id: oid }) });
+      if (r.error) { toast(r.error); byes.disabled = false; return; }
+      toast('已彻底删除');
+      closeSheet();
+      if (window.HabitGraph) HabitGraph.load('owner_ai_id=' + oid);
+      if (curPage === 'seeds') loadSeeds();
+    } catch (e) { toast('删除失败：' + e.message); byes.disabled = false; }
+  };
+  btns.appendChild(byes); btns.appendChild(bno);
+  body.appendChild(btns);
+}
+
+/* ── 启动：先鉴权，登录后拉AI列表 ── */
+window.__authHeaders = () => ME ? { 'X-User-Id': ME.id, 'X-Token': ME.token } : {};
+faceInit();   // 点阵表情：一直转着，没数据时就显示"睡着"的暗脸
+if (window.HabitGraph) {
+  HabitGraph.mount($('habit-canvas'));
+  HabitGraph.setInteractive(true);
+  HabitGraph.onSelect(hit => { openSeedSheet(hit); });
+  // 意识海观察维度切换：换一个维度看同一片海（种子在海中的坐标由后端按该维度重算）
+  $('oceanViews').addEventListener('click', e => {
+    const v = e.target.dataset.ov;
+    if (!v || !ownerAiId) return;
+    [...$('oceanViews').children].forEach(s => s.classList.toggle('on', s.dataset.ov === v));
+    HabitGraph.setView(v);
+    HabitGraph.load('owner_ai_id=' + ownerAiId);
+  });
+}
+$('manasWake').onclick = () => { if (ownerAiId) attachManas(ownerAiId); else toast('请先选择AI本体'); };
+initAuth().then(ok => { if (ok) loadAis(); });
+</script>
+</body>
+</html>
