@@ -1007,7 +1007,7 @@ async function loadXixi() {
   $('engStat').innerHTML =
     `<div class="it"><b>${s.seeds}</b><span>种子总量</span></div>` +
     `<div class="it"><b>${s.vectors}</b><span>向量索引</span></div>` +
-    `<div class="it"><b style="color:${s.emb_ready ? '#7dc98f' : '#c9a37d'}">${s.emb_ready ? '在线' : '懒加载'}</b><span>bge 反射</span></div>` +
+    `<div class="it"><b style="color:${s.emb_ready ? '#7dc98f' : '#c9a37d'}">${s.emb_ready ? '在线' : '未配置'}</b><span>向量反射</span></div>` +
     `<div class="it" style="min-width:140px"><b style="font-size:13px">${esc(s.time || '')}</b><span>服务器时间</span></div>`;
   const d = await api('/api/xixi_log?limit=120');
   $('xixiList').innerHTML = '';
@@ -1295,10 +1295,9 @@ function faceInit() {
   requestAnimationFrame(faceFrame);
 }
 async function faceLoad() {
-  // ⚠️ 文件名必须是 .mesh，不能是 .json —— nginx 有一条全局规则
-  //    location ~* \.(json|txt|md)$ { root .../static; try_files $uri =404; }
-  //    会把所有 .json 请求强制指向另一个目录，导致这里 404 拿到一段 HTML（曾踩）。
-  //    同理 .txt / .md 也不能用。换头模就用 alaya/tools/gen_face_mesh.py 重跑覆盖本文件。
+  // ⚠️ 文件名用 .mesh 而不是 .json —— 静态服务器/反代常有针对 .json/.txt/.md 的
+  //    全局规则，会把请求指到别的目录，导致这里 404 拿到一段 HTML（曾踩）。
+  //    换头模就用 tools/gen_face_mesh.py 重跑覆盖本文件。
   try {
     const d = await (await fetch('face_mesh.mesh')).json();
     face.v = new Float32Array(d.v);
@@ -1503,7 +1502,7 @@ function stopPlay() {
 }
 
 /* ── 录音 + VAD（静音800ms自动提交；播放中说话=打断） ──
-   自打断防治三重门控（借鉴sisi_web实证参数）：开播保护期1.2s + 高阈值0.06 + 持续3帧(约380ms) */
+   自打断防治三重门控（实测参数）：开播保护期1.2s + 高阈值0.06 + 持续3帧(约380ms) */
 // 静音判定 800ms：实测 2026-10-24 定。600ms 太短——用户一句话中间换气就被当成"说完了"。
 // 这里不是延时大头（省下的 0.2 秒换不来体验），延时要去处理链路里查。
 const RMS_ON = 0.018, SILENCE_MS = 800;

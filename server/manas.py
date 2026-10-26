@@ -119,7 +119,7 @@ SPOKEN_COOLDOWN_SEC = 1800
 SPOKEN_COOLDOWN_TICKS = max(1, int(SPOKEN_COOLDOWN_SEC * 1000 / TICK_MS))
 
 # ── 感官↔记忆 语义关联（习气网络建边的正确算法）────────────────
-# 用户说一句话 → 用 bge 语义向量找最相关的记忆种子建边。相似度即边权：
+# 用户说一句话 → 用语义向量（外部 embedding）找最相关的记忆种子建边。相似度即边权：
 # 越相关传导越强，越能一起把主念顶起来。这才是「相关的种子都关联起来，形成熏习」。
 ASSOC_TOPK = 12                # 每次感官输入最多关联的记忆种子数
 ASSOC_MIN_SIM = 0.40           # 语义相似度下限（低于此视为不相关，不建边）
@@ -329,15 +329,15 @@ class ManasCore:
         连续出现这6个字，几乎永远匹配不到，感官种子成了孤岛，无法激活任何相关记忆，
         主念集群里也就没有用户当前话语的语义。这是「对话与记忆种子没有关联」的根因。
 
-        正确做法：bge 语义向量算相似度（与检索同一套模型/同一份向量），
+        正确做法：语义向量算相似度（与检索同一套模型/同一份向量），
         相似度越高边权越大。这才是「用户说了某句话，相关的种子都关联起来」。
         """
         from . import retrieval
         txt = str(text or "").strip()
         if not txt:
             return
-        # bge 编码是 CPU 密集（百毫秒级），丢到线程池，避免阻塞中枢心跳与其他会话
-        q = (await asyncio.to_thread(retrieval._encode, [txt]))[0]
+        # 外部 embedding 调用是 I/O，await 它，不阻塞中枢心跳与其他会话
+        q = (await retrieval._encode([txt]))[0]
         # 语义近邻：取相似度最高的若干长期种子建边（排除感官种子自身）
         hits = retrieval._cosine_topk(q, ASSOC_TOPK)
         pool = db.pool()

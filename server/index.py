@@ -151,9 +151,9 @@ class Session:
 
 
 # ── 后台 LLM 让路（对话优先的唯一保证）──────────────────────────
-# 对话、我识演化、结生、资料抽取全都走同一个 27B 实例（8100）。llama 的并行 slot
-# 会互相抢算力：后台凝聚任务一跑，对话首字就从 2 秒涨到 11~18 秒（2026-10-24 实测，
-# 同一条 user 消息：无后台时首字 2.09s，有凝聚任务时 17.11s）。
+# 对话、我识演化、结生、资料抽取全都走同一个 LLM 端点。多数推理服务的并发槽位
+# 会互相抢算力：后台凝聚任务一跑，对话首字就从 2 秒涨到十几秒（实测：同一条 user
+# 消息，无后台时首字 2.09s，有凝聚任务时 17.11s）。
 # 铁律：对话永远优先——后台 LLM 必须在「用户静默 BG_LLM_IDLE_SEC 秒」后才开跑，
 # 且同一时间只跑一个；用户一开口就取消正在跑的后台任务，让它立刻让路。
 BG_LLM_IDLE_SEC = 8.0
@@ -639,7 +639,7 @@ async def _retract_memories(ai_ids: list, texts: list, speaker_name: str = "") -
         variants.append(t)
         if speaker_name and speaker_name in t:
             variants.append(t.replace(speaker_name, "我"))
-    vecs = await asyncio.to_thread(retrieval._encode, [v[:200] for v in variants])
+    vecs = await retrieval._encode([v[:200] for v in variants])
     cand: dict[int, float] = {}
     for q in vecs:
         for sid, sim in retrieval._cosine_topk(q, 8):
@@ -734,7 +734,7 @@ async def _condense(session, reason: str, ws: WebSocket | None = None) -> dict:
              reason, speaker_ai, owner, len(batch), [int(i["id"]) for i in batch][:12])
     dialogue = working.dialogue_text(batch)
     # 结生要调 LLM（抽取 + 两次我识演化），必须等用户静默后才跑——否则它会跟"下一句话"
-    # 抢同一个 27B 实例（对话首字 2s → 十几秒）。等不到就下次静默再结生，原料不会丢。
+    # 抢同一个 LLM 端点（对话首字 2s → 十几秒）。等不到就下次静默再结生，原料不会丢。
     async with _bg_llm_slot("结生"):
         out = await _write_dialogue_memory(owner, peer, dialogue,
                                            chat_name=session.ai_name,
@@ -844,7 +844,7 @@ async def _run_turn(session: Session, ws: WebSocket, user_text: str, scene: str 
         return _visible_emotion_stream(_visible_stream(full_text))
 
     pump = asyncio.create_task(tts_pump())
-    # 对话这一刻起，后台 LLM（自我演化/结生/资料抽取）必须让路——同一个 27B 实例，
+    # 对话这一刻起，后台 LLM（自我演化/结生/资料抽取）必须让路——同一个 LLM 端点，
     # 它们在场就会把首字从 2 秒拖到十几秒（见 _bg_llm_slot 的实测注释）。
     _preempt_bg_llm()
     if autonomous:

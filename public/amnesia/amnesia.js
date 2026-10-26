@@ -46,8 +46,8 @@ let camActive = false, camStream = null, camFacing = 'user';
     return p.toString();
   }
   // ─── 部署根路径 ──
-  // 本应用挂在 nginx 的 /alaya/ 前缀下（access_url=https://example.com/alaya/），
-  // 直连 9890 端口时前缀为空。API/WS 一律基于它拼接，绝不写死根绝对路径（否则前缀下全 404）。
+  // 本应用可以挂在任意 URL 前缀下（例如 /alaya/），直连端口时前缀为空。
+  // API/WS 一律基于它拼接，绝不写死根绝对路径（否则带前缀部署时全 404）。
   const BASE = location.pathname.replace(/\/amnesia\/.*$/, '').replace(/\/$/, '');
 
   async function api(path, opts = {}) {

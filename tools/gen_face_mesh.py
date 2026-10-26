@@ -1,10 +1,10 @@
-"""生成右上角"线框人头"用的稀疏网格文件（alaya/public/face_mesh.mesh）。
+"""生成右上角"线框人头"用的稀疏网格文件（public/face_mesh.mesh）。
 
 为什么要有这个脚本：网格是**离线预计算**的产物，前端只做投影渲染（不引 Three.js）。
 换头模时用同一套参数重跑即可，不要在别处手工造数据。
 
 用法：
-    /root/models/envs/emb/bin/python alaya/tools/gen_face_mesh.py <head.obj> alaya/public/face_mesh.mesh
+    python3 tools/gen_face_mesh.py <head.obj> public/face_mesh.mesh
 
 当前用的头模（three.js 示例里的开源头部，面朝 -x；0° 视角即正脸）：
     https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/obj/walt/WaltHead.obj
@@ -15,9 +15,8 @@
         "正脸了但没五官"的原因）；30³ 能留住眼窝/鼻/嘴，边数也不至于糊（约 1900 节点 / 5800 边）。
   法线   离线算好顶点法线一起存进文件——前端靠它做**光照**（光从左上前方来）。
          注意前端还要对光照值取 gamma（^0.65）抬中间调，否则五官全落在最暗那一档、等于看不见。
-  ⚠️ 输出文件名必须是 .mesh，不能是 .json —— nginx 有全局规则
-     location ~* \.(json|txt|md)$ { root .../static; try_files $uri =404; }
-     会把所有 .json 请求强制指向另一个目录（前端会 404 拿到 HTML）。
+  ⚠️ 输出文件名用 .mesh 而不是 .json：静态服务器/反代常有针对 .json/.txt/.md 的
+     全局规则，会把请求指到别的目录（前端 404 拿到 HTML）。
 
 已否决的两条路（别再走）：
   · 按曲率挑边（top-N 稀疏化）→ 选中的多是模型接缝噪声，糊成斑块；

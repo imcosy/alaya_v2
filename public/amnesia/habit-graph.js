@@ -35,7 +35,7 @@
   }
 
   let cv = null, ctx = null, W = 0, H = 0, DPR = 1;
-  // 部署根路径：与 amnesia.js 同源推导（nginx /alaya/ 前缀；直连端口为空）
+  // 部署根路径：与 amnesia.js 同源推导（可带 URL 前缀；直连端口为空）
   const BASE = location.pathname.replace(/\/amnesia\/.*$/, '').replace(/\/$/, '');
   let nodes = [], byId = new Map(), edges = [], lastVis = [];
   let pulses = [];
