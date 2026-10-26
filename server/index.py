@@ -57,8 +57,8 @@ MATERIAL_MAX_KEEP = 3         # 会话内保留最近几份资料
 MATERIAL_PROMPT_LIMIT = 12000  # 资料块注入 prompt 的总字数上限
 # 用户否认/纠正过的内容 → 库里同义旧种子的作废门槛。
 # 实测：同一件事的第三人称改写 0.74、换成"我"的第一人称改写 0.775~0.87；
-# 而"五金厂"与"宏达机械厂"这种不同的事也有 0.71。阈值取 0.75：
-# 既能命中同一件事的最小值（第一人称变体 0.775），又不会把"五金厂"误当成"纺织厂"。
+# 而"电子厂"与"蓝鲸纺织厂"这种不同的事也有 0.71。阈值取 0.75：
+# 既能命中同一件事的最小值（第一人称变体 0.775），又不会把"电子厂"误当成"纺织厂"。
 # 双视角的另一份（第三人称，0.74）由 episode 一并作废，不靠相似度硬凑。
 RETRACT_SIM = 0.75
 EXTRACT_MIN_CONF = 0.6    # 写入门槛：抽取置信度低于此值的信息不落库（宁缺勿滥，防"乱记"）
@@ -94,7 +94,7 @@ GUIDE_PROMPT = (
     "不许「该问点什么」式地找话问、不许逢句必问、不许拿问号收尾成了习惯；"
     "真人说话大多数时候是**陈述**，不是提问，一轮也可以一个问题都不问。"
     "【已知的绝不再问】出现在【TA的记忆档案】或对话上文里的信息（家人的姓名、单位、年代、"
-    "TA已经讲过的经历），就是你本来就知道的事——直接接住（「张建国，永垂不朽的垂，你爸」），"
+    "TA已经讲过的经历），就是你本来就知道的事——直接接住（「谢垂源，永垂不朽的垂，你爸」），"
     "顺着它往更深更细处聊；绝不许再问「你爸叫什么名字？」这种已经答过的问题。"
     "开口问之前先在心里过一遍：这件事我是不是已经知道了？知道就直接用、往下推进。"
     "【绝不做访谈】不许说「我帮你顺一下」「让我帮你理一理」「这是哪一年的事？」这种旁观者口气；"
@@ -151,9 +151,9 @@ class Session:
 
 
 # ── 后台 LLM 让路（对话优先的唯一保证）──────────────────────────
-# 对话、我识演化、结生、资料抽取全都走同一个 LLM 端点。多数推理服务的并发槽位
-# 会互相抢算力：后台凝聚任务一跑，对话首字就从 2 秒涨到十几秒（实测：同一条 user
-# 消息，无后台时首字 2.09s，有凝聚任务时 17.11s）。
+# 对话、我识演化、结生、资料抽取全都走同一个 27B 实例（8100）。llama 的并行 slot
+# 会互相抢算力：后台凝聚任务一跑，对话首字就从 2 秒涨到 11~18 秒（2026-10-24 实测，
+# 同一条 user 消息：无后台时首字 2.09s，有凝聚任务时 17.11s）。
 # 铁律：对话永远优先——后台 LLM 必须在「用户静默 BG_LLM_IDLE_SEC 秒」后才开跑，
 # 且同一时间只跑一个；用户一开口就取消正在跑的后台任务，让它立刻让路。
 BG_LLM_IDLE_SEC = 8.0
@@ -456,7 +456,7 @@ async def _build_context(owner: int, peer: int, user_text: str, speaker_name: st
         parts.append("【此刻是你自己想说话】没有人问你任何问题——是「当下这一念」自己浮上来的。"
                      "顺着这一念说你此刻想的、想说的；"
                      "不要复述或续写你上一轮说过的话，也不要假装对方刚问了你什么。")
-        # 主动搭话的分寸（实测 2026-10-24 实测斥为"蠢"：她拿旧记忆当话题，
+        # 主动搭话的分寸（华哥 2026-10-24 实测斥为"蠢"：她拿旧记忆当话题，
         # 用"你刚说那事儿，我记着呢"这种回应式开头凭空编出一段并不存在的对话）。
         parts.append("【主动搭话的分寸·必须遵守】"
                      "① 开头不许出现「你刚说」「你刚才说」「你刚才提到」「你之前说的那事」——"
@@ -512,7 +512,7 @@ async def _write_view(owner: int, peer: int, spec: list[dict], episode: str,
         conf = float(s.get("confidence", 0.8))
         # 理解先于写入的代码级保证：抽取器自己都没把握的信息不落库。
         # extract 的判级口径里「寒暄级信息再确定也不超过 0.7」，低于 0.6 即「听不清/转述存疑」——
-        # 这类东西一旦入库就成了"乱记"的源头，宁缺勿滥（实测 2026-10-04 反馈的根因之一）。
+        # 这类东西一旦入库就成了"乱记"的源头，宁缺勿滥（华哥 2026-10-04 反馈的根因之一）。
         if conf < EXTRACT_MIN_CONF:
             continue
         is_repeat = bool(twin_id) and twin_sim >= retrieval.MERGE_SIM
@@ -622,11 +622,11 @@ async def _retract_memories(ai_ids: list, texts: list, speaker_name: str = "") -
     """用户明确否认/纠正过的内容 → 库里同义的旧种子作废（state=invalid）。
 
     被否认的事就是没发生过；它若留在记忆里，AI 会继续当真、继续主动提起
-    （实测事故：一句 ASR 噪声被延伸成"服装厂"，用户当场否认，之后仍被反复提起）。
+    （实测事故：一句 ASR 噪声被延伸成"针织厂"，用户当场否认，之后仍被反复提起）。
     这不是兜底——否认是用户给出的确定性事实，假记忆必须从检索与热态网络里消失。
 
-    ⚠️ 双视角记忆库里同一件事有两份：「我曾在宏达机械厂工作三年」（用户本体）
-    和「老陈曾在…」（如意本体）。被否认的事实是第三人称，直接和第一人称那份算
+    ⚠️ 双视角记忆库里同一件事有两份：「我曾在蓝鲸纺织厂工作三年」（用户本体）
+    和「大明哥曾在…」（如意本体）。被否认的事实是第三人称，直接和第一人称那份算
     相似度会掉到 0.52（实测），所以要把称呼换成"我"再算一遍——同一件事的两种人称
     都必须命中。
     """
@@ -639,7 +639,7 @@ async def _retract_memories(ai_ids: list, texts: list, speaker_name: str = "") -
         variants.append(t)
         if speaker_name and speaker_name in t:
             variants.append(t.replace(speaker_name, "我"))
-    vecs = await retrieval._encode([v[:200] for v in variants])
+    vecs = await asyncio.to_thread(retrieval._encode, [v[:200] for v in variants])
     cand: dict[int, float] = {}
     for q in vecs:
         for sid, sim in retrieval._cosine_topk(q, 8):
@@ -661,7 +661,7 @@ async def _retract_memories(ai_ids: list, texts: list, speaker_name: str = "") -
         if owner_of in done_owners:
             continue          # 每个本体只按最相似的那一条定位，防误伤
         # 同一事件束（双视角的两份共享 episode）一起作废：
-        # 被否认的事实在用户本体那边是"我…"，在如意那边是"老陈…"，
+        # 被否认的事实在用户本体那边是"我…"，在如意那边是"大明哥…"，
         # 两份必须同时消失，否则另一份还会被拿来提。
         episode = str(rows[0].get("episode_id") or "")
         targets = [int(sid)]
@@ -734,7 +734,7 @@ async def _condense(session, reason: str, ws: WebSocket | None = None) -> dict:
              reason, speaker_ai, owner, len(batch), [int(i["id"]) for i in batch][:12])
     dialogue = working.dialogue_text(batch)
     # 结生要调 LLM（抽取 + 两次我识演化），必须等用户静默后才跑——否则它会跟"下一句话"
-    # 抢同一个 LLM 端点（对话首字 2s → 十几秒）。等不到就下次静默再结生，原料不会丢。
+    # 抢同一个 27B 实例（对话首字 2s → 十几秒）。等不到就下次静默再结生，原料不会丢。
     async with _bg_llm_slot("结生"):
         out = await _write_dialogue_memory(owner, peer, dialogue,
                                            chat_name=session.ai_name,
@@ -751,7 +751,7 @@ async def _condense(session, reason: str, ws: WebSocket | None = None) -> dict:
                                     speaker_name=session.speaker_name or session.peer_label)
         # 声纹锚点绝不在这里回填：结生时"新出现的人名"是模型从对话里猜的，拿它去绑定
         # 声纹就等于把某段声音硬塞给猜出来的人（本人锚点被别人的声音覆盖，记忆全乱）。
-        # 本人声纹只在 _identify_speaker 确认认主时登记（见 _bootstrap_own_voice）。
+        # 开放版没有声纹服务：说话人即当前登录用户本人（见 _identify_speaker）。
         await _evolve_self(owner, peer, dialogue, peer_distill=(session.mode != "guide"))
     await working.drop_first(speaker_ai, owner, len(batch))
     written = out.get("written") or []
@@ -844,7 +844,7 @@ async def _run_turn(session: Session, ws: WebSocket, user_text: str, scene: str 
         return _visible_emotion_stream(_visible_stream(full_text))
 
     pump = asyncio.create_task(tts_pump())
-    # 对话这一刻起，后台 LLM（自我演化/结生/资料抽取）必须让路——同一个 LLM 端点，
+    # 对话这一刻起，后台 LLM（自我演化/结生/资料抽取）必须让路——同一个 27B 实例，
     # 它们在场就会把首字从 2 秒拖到十几秒（见 _bg_llm_slot 的实测注释）。
     _preempt_bg_llm()
     if autonomous:
@@ -894,7 +894,7 @@ async def _run_turn(session: Session, ws: WebSocket, user_text: str, scene: str 
     # 系统AI如意建议转发寻忆链接：剥离标记后，单独下发 ask_recall 触发前端底窗表单
     recall_ask = _parse_recall_marker(full)
     full = _strip_emotion_marker(_strip_recall_marker(full))
-    # 分段时延：一段一行，谁慢一眼就能看出来（用户问"到底慢在哪"就看这里）
+    # 分段时延：一段一行，谁慢一眼就能看出来（华哥问"到底慢在哪"就看这里）
     log.info("[latency] 回复 %.2fs：时间感 %.2fs · 记忆/主念 %.2fs · 历史+落库 %.2fs · "
              "LLM首字 %s · 首块音频 %s · LLM全文 %.2fs",
              time.monotonic() - t0, t_note - t0, t_ctx - t_note, t_prep - t_ctx,
@@ -1438,7 +1438,7 @@ async def _sense_from_text(session: Session, ws: WebSocket, text_in: str, scene:
 async def _sense_material(session: Session, ws: WebSocket, kind: str, name: str, text: str):
     """对话窗口发来的资料（文档正文 / 照片画面描述）。
 
-    资料 ≠ 对方说的话（实测 2026-10-24 定）：
+    资料 ≠ 对方说的话（华哥 2026-10-24 定）：
       · 正文原样挂进会话上下文（session.materials），此后每一轮都读得到。
         旧实现把正文塞进 pending_sense 当"用户这句话"，一次打断（barge-in 取消 turn）
         就整篇蒸发——用户看到的就是"上传了文档，如意根本不知道里面写了什么"。
@@ -1555,7 +1555,7 @@ async def _sense_from_audio(session: Session, ws: WebSocket, audio: bytes, frame
             session_key=session.sid)
         session.pending_sense = user_text
         session.pending_scene = scene
-        # 分段时延（用户问"到底慢在哪"时就靠这一行定位）：ASR / 识人 / 入网各占多少
+        # 分段时延（华哥问"到底慢在哪"时就靠这一行定位）：ASR / 识人 / 入网各占多少
         log.info("[latency] 语音接入 %.2fs 音频=%.1fs：ASR %.2fs · 识人 %.2fs · 入网(含语义关联) %.2fs",
                  time.monotonic() - t0, len(audio) / 32000.0,
                  t_asr - t0, t_spk - t_asr, time.monotonic() - t_spk)
@@ -1625,116 +1625,12 @@ async def _pick_ack(session: Session, said: str) -> str:
         return ""
 
 
-# ── 听声识人（铁律·实测 2026-10-24）─────────────────────────────
-#   对话里只认「当前登录用户本人」的声纹。其他人的声音一律不算用户的声音——
-#   不写记忆、不当成"用户说的话"、也不以用户的名义作答，否则记忆全乱。
-#   本人参考：xd_speaker 里绑定到该 user_id 的簇（全平台唯一权威）
-#           + alaya_persons 里与本账号同名的锚点（本链路早期自动登记的簇）。
-#   同域簇实测：同人 0.53~0.76，不同人 ≤0.40 —— 0.45 是可分界的下限。
-SPEAKER_ME_FLOOR = 0.45      # 判为本人的相似度下限
-SPEAKER_ME_MARGIN = 0.05     # 本人还须明显领先"最像的他人"，避免都像时误判
-SPEAKER_EMB_DIM = 192        # CAM++ 声纹维度
-
-
-def _unit(v):
-    import numpy as np
-    n = float(np.linalg.norm(v))
-    return v / n if n > 0 else v
-
-
-async def _speaker_refs(session: Session) -> tuple[list, list]:
-    """(本人声纹参考列表, 他人参考[(称呼, 向量)])——他人只用于报出"那是谁"，不参与认主"""
-    import numpy as np
-    uid = int((session.user or {}).get("id") or 0)
-    me_name = str((session.user or {}).get("nickname") or "").strip()
-    me: list = []
-    others: list = []
-    nbytes = SPEAKER_EMB_DIM * 4
-    if uid:
-        rows = await db.pool().query(
-            "SELECT embedding FROM xd_speaker WHERE user_id=%s AND embedding IS NOT NULL "
-            "AND LENGTH(embedding)=%s", [uid, nbytes])
-        me += [_unit(np.frombuffer(r["embedding"], dtype=np.float32)) for r in rows]
-        rows = await db.pool().query(
-            "SELECT nickname, embedding FROM xd_speaker WHERE user_id IS NOT NULL AND user_id<>%s "
-            "AND embedding IS NOT NULL AND LENGTH(embedding)=%s", [uid, nbytes])
-        for r in rows:
-            rig = _unit(np.frombuffer(r["embedding"], dtype=np.float32))
-            # 同一昵称的另一账号簇（同一个人开了两个号）也算本人参考，
-            # 否则本人会被判成"旁人：自己"
-            if me_name and str(r["nickname"] or "").strip() == me_name:
-                me.append(rig)
-            else:
-                others.append((str(r["nickname"] or "旁人"), rig))
-    ai_ids = sorted({int(x) for x in (session.owner_ai_id, session.peer_ai_id) if int(x or 0) > 0})
-    if ai_ids:
-        import base64 as b64
-        ph = ",".join(["%s"] * len(ai_ids))
-        rows = await db.pool().query(
-            f"SELECT name, speaker_emb FROM alaya_persons "
-            f"WHERE owner_ai_id IN ({ph}) AND speaker_emb IS NOT NULL", ai_ids)
-        for r in rows:
-            emb = np.frombuffer(b64.b64decode(r["speaker_emb"]), dtype=np.float32)
-            if len(emb) != SPEAKER_EMB_DIM:
-                continue
-            name = str(r["name"] or "").strip()
-            if me_name and name == me_name:
-                me.append(_unit(emb))
-            else:
-                others.append((name or "旁人", _unit(emb)))
-    return me, others
-
-
+# ── 听声识人（开放版）────────────────────────────────────────
+#   开放版不接声纹服务：单人使用，麦克风前的人就是当前登录用户本人。
+#   要接声纹（xd_speaker / CAM++ 等），在 server/llm.py 的 asr_recognize 里
+#   把第二返回值填成声纹向量，并在这里恢复「本人 / 他人」的比对逻辑。
 async def _identify_speaker(session: Session, spk_emb_b64: str | None) -> tuple[bool, str]:
-    """声纹 → (是否当前用户本人, 称呼)。
-
-    只有确认是「当前登录用户本人」才返回 True；其他人/未识别一律 False。
-    绝不再把任何一个陌生声纹自动登记成本人（旧实现每说一句就覆盖一次本人锚点，
-    于是谁说话都成了"老陈"——记忆错乱的根）。
-    """
-    if not spk_emb_b64:
-        # 未部署声纹服务：单人使用场景，麦克风前的人就是当前登录用户本人。
-        # 这是开放版的明确语义，不是比对失败后的兜底——配了声纹服务才会走下面的认主逻辑。
-        if not settings.get("speaker.enabled"):
-            return True, str((session.user or {}).get("nickname") or "").strip()
-        log.warning("[speaker] 本轮没有声纹向量，无法确认是不是本人")
-        return False, ""
-    import numpy as np, base64 as b64
-    cur = np.frombuffer(b64.b64decode(spk_emb_b64), dtype=np.float32)
-    if len(cur) != SPEAKER_EMB_DIM:
-        log.warning("[speaker] 声纹维度异常（%s），无法比对", len(cur))
-        return False, ""
-    cur = _unit(cur)
-    me_refs, other_refs = await _speaker_refs(session)
-    s_me = max((float(cur @ r) for r in me_refs), default=-1.0)
-    s_other, other_name = -1.0, ""
-    for name, ref in other_refs:
-        s = float(cur @ ref)
-        if s > s_other:
-            s_other, other_name = s, name
-    if me_refs and s_me >= SPEAKER_ME_FLOOR and s_me >= s_other + SPEAKER_ME_MARGIN:
-        return True, str((session.user or {}).get("nickname") or "").strip()
-    if not me_refs and s_other < SPEAKER_ME_FLOOR:
-        # 本账号从未登记过本人声纹：第一位开口的人就是本人（认主），此后以它为准
-        name = str((session.user or {}).get("nickname") or "").strip()
-        if name:
-            await _bootstrap_own_voice(session, spk_emb_b64, name)
-            return True, name
-    if s_other >= SPEAKER_ME_FLOOR:
-        log.info("[speaker] 非本人：%s（本人最像 %.2f / 他人 %.2f）", other_name, s_me, s_other)
-        return False, other_name
-    log.info("[speaker] 未识别声纹（本人最像 %.2f / 他人最像 %.2f）——不作本人处理", s_me, s_other)
-    return False, ""
-
-
-async def _bootstrap_own_voice(session: Session, spk_emb_b64: str, name: str):
-    """首次认主：本账号还没有任何本人声纹参考时，把第一段声音登记为本人的锚点"""
-    for ai in sorted({int(x) for x in (session.owner_ai_id, session.peer_ai_id) if int(x or 0) > 0}):
-        pid = await extract.resolve_person(ai, name)
-        await db.pool().exec("UPDATE alaya_persons SET speaker_emb=%s WHERE id=%s",
-                             [spk_emb_b64, int(pid)])
-    session.speaker_name = name
-    log.info("[speaker] 本人声纹首次登记：%s", name)
+    return True, str((session.user or {}).get("nickname") or "").strip()
 
 
 # ────────────────────────── 应用组装 ──────────────────────────
@@ -1790,14 +1686,8 @@ async def _warm_external():
     配置还没填时这里会失败并在日志里说明，填好 key 后下一轮对话即可用。
     """
     await _warm_vectors()
-    # 基线风格种子是如意的底色，不依赖任何外部服务，开机就种
-    try:
-        gid = await guide.guide_ai_id()
-        await guide.ensure_guide_seeds(gid)
-    except Exception as e:
-        log.error("[alaya] 如意基线种子种入失败: %s", e)
-    if not settings.is_configured("llm"):
-        log.warning("[alaya] 未配置 LLM 接口，如意我识凝聚暂缓（我的资料 → 模型设置）")
+    if not settings.is_configured("gateway"):
+        log.warning("[alaya] 未配置统一接口，如意我识凝聚暂缓（我的资料 → 模型设置）")
         return
     try:
         gid = await guide.guide_ai_id()
@@ -1841,14 +1731,13 @@ async def api_status(user: dict = Depends(auth.get_current_user)):
         "seeds": int(seed_n[0]["n"]) if seed_n else 0,
         "vectors": retrieval.vector_count(),
         "emb_ready": retrieval.model_ready(),
-        "configured": {k: settings.is_configured(k)
-                       for k in ("llm", "asr", "tts", "embedding")},
+        "configured": {k: settings.is_configured(k) for k in ("gateway",)},
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 
 # ── 模型设置（控制台可改，写回 config.json，立即生效）──
-_CONFIG_SECTIONS = ("llm", "vision", "asr", "tts", "embedding", "speaker")
+_CONFIG_SECTIONS = ("gateway",)
 
 
 def _strip_masked(patch: dict, cur: dict) -> dict:
@@ -1888,9 +1777,9 @@ async def api_config_save(body: dict, user: dict = Depends(auth.get_current_user
         return {"ok": True}
     settings.save(patch)
     log.info("[config] 模型设置已更新：%s", ",".join(patch.keys()))
-    if "embedding" in patch or "llm" in patch:
-        # 向量模型或 LLM 换了：后台重做自检 + 索引回填 + 如意我识凝聚
-        asyncio.create_task(_warm_external())
+    if "embedding" in patch:
+        # 向量模型换了：后台重做自检 + 索引回填（维度变化会整体重建）
+        asyncio.create_task(_warm_vectors())
     return {"ok": True, "configured": {k: settings.is_configured(k) for k in _CONFIG_SECTIONS}}
 
 
@@ -2028,7 +1917,7 @@ async def api_upload(file: UploadFile = File(...), user: dict = Depends(auth.get
 
 
 # ── 记忆导入：把"当下获取到的信息"形成记忆种子 ─────────────────────────
-# 铁律（用户定，架构级，不得动摇）：
+# 铁律（华哥定，架构级，不得动摇）：
 #   ① 绝不回退到 RAG —— 不做"外部知识库 + 检索注入"那一套。信息只有一种归宿：
 #      阿赖耶识的记忆种子。
 #   ② 绝不分类型对待 —— 不管导进来的是经历、资料、日记、知识还是照片，

@@ -145,19 +145,28 @@ Open `http://127.0.0.1:9890/` and register a local account (no SMS, no OAuth).
 
 It starts fine without any API key — voice and replies simply won't work until you fill them in.
 
-### Four OpenAI-compatible endpoints
+### One key, one endpoint
 
-| Capability | Endpoint | Notes |
-|---|---|---|
-| LLM | `POST {base}/chat/completions` | must support `stream: true` |
-| ASR | `POST {base}/audio/transcriptions` | upload WAV, expect `{"text": ...}` |
-| TTS | `POST {base}/audio/speech` | return `wav` or raw `pcm` (16-bit mono) |
-| Embeddings | `POST {base}/embeddings` | the only semantic coordinate for recall |
+Everything the engine needs — chat, vision, speech recognition, speech synthesis, embeddings — is served by a
+single OpenAI-compatible gateway behind **one key**:
 
-**Minimum to chat:** LLM + Embeddings. Add ASR/TTS for voice.
+1. Open **https://dev.nice-ai.cn/open/** and sign in with a phone number.
+2. Create a key (`sk-s2s-...`).
+3. Paste it into the UI (user icon → profile → ⚙️ model settings) or `config.json`.
 
-Works with OpenAI, DeepSeek, Alibaba Bailian, SiliconFlow, Volcengine, or any local server exposing the same
-endpoints (vLLM / Ollama / Xinference / FastChat) — just point `base_url` at it.
+| Capability | Endpoint |
+|---|---|
+| Chat / vision | `POST {base}/chat/completions` |
+| ASR | `POST {base}/audio/transcriptions` |
+| TTS | `POST {base}/audio/speech` (48 kHz PCM out) |
+| Embeddings | `POST {base}/embeddings` |
+
+Each key comes with a free quota; usage and remaining balance are shown on that page. Voice aliases
+(`zh-female-1` …) are provided by the gateway and can be assigned per persona.
+
+The project deliberately ships **no per-vendor settings**. If you want to run against your own stack
+(vLLM / Ollama / Xinference / any OpenAI-compatible server), point `server/llm.py` at it — that's the only
+place that talks to a model.
 
 Switching the embedding model is detected automatically: old vectors are discarded and rebuilt from seed text.
 
@@ -170,20 +179,24 @@ Two equivalent ways, both effective immediately (no restart):
 1. **In the UI**: user icon → profile → ⚙️ model settings
 2. **`config.json`** (template: [`config.example.json`](config.example.json))
 
+```json
+{
+  "server": { "host": "0.0.0.0", "port": 9890, "default_ai_name": "如意" },
+  "gateway": { "base_url": "https://dev.nice-ai.cn/open/v1", "api_key": "sk-s2s-..." }
+}
+```
+
 Environment variables win over the file:
 
 ```bash
 ALAYA_PORT=9890
-ALAYA_LLM_BASE=...  ALAYA_LLM_KEY=...  ALAYA_LLM_MODEL=...
-ALAYA_ASR_BASE=...  ALAYA_ASR_KEY=...  ALAYA_ASR_MODEL=...
-ALAYA_TTS_BASE=...  ALAYA_TTS_KEY=...  ALAYA_TTS_MODEL=...  ALAYA_TTS_VOICE=...
-ALAYA_EMB_BASE=...  ALAYA_EMB_KEY=...  ALAYA_EMB_MODEL=...
+ALAYA_GATEWAY_BASE=https://dev.nice-ai.cn/open/v1
+ALAYA_GATEWAY_KEY=sk-s2s-...
 ```
 
-**Voices** are just TTS vendor voice names (no built-in cloning) — declare a list, pick one per persona.
-**Emotion → voice** mapping makes it switch voice when the reply opens with an emotion tag.
-**Speaker identification** is optional: no ASR vendor returns speaker embeddings, so it's off by default
-(single user = the logged-in account). Plug your own `POST {base}/embedding` service to enable it.
+**Voices** are gateway voice aliases (no built-in cloning) — pick one per persona in the profile panel.
+**Speaker identification** is single-user in the open edition: the person at the microphone is the logged-in
+account.
 
 ---
 
@@ -237,7 +250,7 @@ Honest list — these are choices, not oversights:
   server; not a multi-tenant cluster.
 - **The habit network is in-memory per persona.** Ticks are O(nodes × edges). Tens of thousands of seeds per
   persona are fine; millions are not, and would need sharding.
-- **Speaker identification needs a sidecar.** Vendors don't return embeddings. Off by default.
+- **Speaker identification is single-user.** The open edition treats the person at the microphone as the logged-in account; voiceprint matching would need a separate service.
 - **Auth is deliberately minimal.** Local accounts, PBKDF2, bearer tokens. No OAuth, no roles, no email
   verification. If you expose it publicly, put it behind a reverse proxy with its own auth.
 - **Text is the internal medium for extraction; sound is not.** Audio goes to ASR, seeds are text + embeddings.
@@ -286,7 +299,8 @@ Alaya needs memories that excite and inhibit each other, and that change weight 
 on a graph, not top-k.
 
 **Can I run it fully locally?**
-Yes. Point `base_url` at vLLM / Ollama / Xinference / FastChat. Nothing in the engine requires a specific vendor.
+Yes. `server/llm.py` is the only file that talks to a model — point it at vLLM / Ollama / Xinference / any
+OpenAI-compatible server and set `gateway.base_url`. Nothing in the engine requires a specific vendor.
 
 **Where is my data?**
 `data/alaya.db`, one file, on your machine. But your conversation text **is sent to whichever providers you

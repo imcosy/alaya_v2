@@ -36,12 +36,12 @@ async def probe() -> bool:
     会遍历库中所有长期种子重新编码。返回 False 表示当前不可用（配置缺失/接口不通）。
     """
     global _dim, _loaded
-    if not settings.is_configured("embedding"):
-        log.warning("[retrieval] 未配置 embedding 接口，向量召回不可用（我的资料 → 模型设置）")
+    if not settings.is_configured("gateway"):
+        log.warning("[retrieval] 未配置统一接口（我的资料 → 模型设置），向量召回不可用")
         return False
     v = await _encode(["ping"])
     dim = int(v.shape[1])
-    old = int(settings.get("embedding.dim") or 0)
+    old = int(settings.get("gateway.embedding_dim") or 0)
     if old and old != dim:
         log.warning("[retrieval] 向量维度 %s → %s（模型已更换），丢弃旧索引并重建", old, dim)
         _vecs.clear()
@@ -49,7 +49,7 @@ async def probe() -> bool:
         if os.path.exists(VEC_PATH):
             os.remove(VEC_PATH)
     if old != dim:
-        settings.persist_value("embedding.dim", dim)
+        settings.persist_value("gateway.embedding_dim", dim)
     _dim = dim
     log.info("[retrieval] 向量模型就绪 dim=%s", dim)
     return True
@@ -106,7 +106,7 @@ async def load_vectors_once():
 
 
 def model_ready() -> bool:
-    return settings.is_configured("embedding")
+    return settings.is_configured("gateway")
 
 
 def vector_count() -> int:
@@ -272,7 +272,7 @@ async def recall(owner_ai_id: int, peer_ai_id: int, query_text: str,
     # 只取「最近30天没被召回」的种子：常青路线的本义是「很久没想起、但依然重要的底色记忆」。
     # 若不加这个约束，weight 顶格的种子每轮必进 top12 → 每轮被注入 prompt → 读即写再加权，
     # 形成「越召回越强、越强越被召回」的死循环，AI 会永远卡在同一个话题上出不来
-    # （实测 2026-09-30 反馈「如意一直在说老李」的根因之一）。
+    # （华哥 2026-09-30 反馈「如意一直在说老周」的根因之一）。
     # 近期已召回的记忆，其相关性已由路线1向量反射按当下语义精确衡量，不需要常青路线再兜一遍。
     evergreen_rows = await pool.query(
         f"SELECT id, weight FROM alaya_seeds WHERE {cond} "
@@ -458,12 +458,12 @@ def build_memory_prompt(recall_result: dict, autonomous: bool = False) -> str:
     分两段：向量反射真正命中的（与当下这句话直接相关）在前，标「直接相关」；
     时间近因/高权重常青的兜底项在后，标「背景」。
     旧实现把两路混在一张平铺清单里，LLM 无从分辨哪条是「这话勾起的记忆」，
-    于是要么全当背景忽略、要么拿无关旧事硬凑 → 答非所问（实测 2026-09-29 反馈「太蠢」的根因之一）。
+    于是要么全当背景忽略、要么拿无关旧事硬凑 → 答非所问（华哥 2026-09-29 反馈「太蠢」的根因之一）。
 
     「直接相关」的判据是**向量反射真的命中**（sim≥0.42），不能只看 score：
     常青路线给每颗种子的加分上限是 0.5，任何一颗高权重种子都能凭这一项越过 0.42，
     被误标成「优先据此回应」——这正是 AI 反复揪着同一件事不放的直接推手
-    （实测 2026-09-30 反馈「如意一直在说老李」的根因之一）。
+    （华哥 2026-09-30 反馈「如意一直在说老周」的根因之一）。
     """
     seeds = recall_result.get("seeds") or []
     if not seeds:
@@ -473,7 +473,7 @@ def build_memory_prompt(recall_result: dict, autonomous: bool = False) -> str:
         tag = s.get("seed_type") or "fact"
         # 归属标注：让 LLM 一眼分清这条记忆是「我的」还是「对方的」。
         # 旧实现不标归属，LLM 把对方的信息也当成自己的往事 → 认领对方的人生
-        # （对方说「我女儿叫小雨」，AI 就说「我女儿叫小雨」）——实测 2026-10-01 反馈
+        # （用户说「我女儿叫谢心瑜」，AI 就说「我女儿叫谢心瑜」）——华哥 2026-10-01 反馈
         # 「AI 理解力完全没法用、颠三倒四」的根因之一。
         own = {"self": "我", "共有": "我们", "他人": "对方"}.get(str(s.get("subject") or "self"), "我")
         own_part = f"[{own}]"
@@ -496,7 +496,7 @@ def build_memory_prompt(recall_result: dict, autonomous: bool = False) -> str:
         if autonomous:
             # 自主开口：没有人说这句话。若仍写「当下这句话勾起的记忆…优先据此回应」，
             # 模型会把记忆当成对方刚说的话来回应——用户听到的就是"她把我没说过的事
-            # 说成我刚说的"（实测 2026-10-24 反馈的根因）。
+            # 说成我刚说的"（华哥 2026-10-24 反馈的根因）。
             blocks.append("【此刻从你自己记忆里浮起来的事（不是对方刚说的，是TA没开口时你自己想起来的）】\n"
                           "（每条前的 [我]=我的经历、[对方]=对方告诉我的TA的事、[我们]=共同经历；"
                           "绝不可把 [对方] 的事说成我自己的；也不要把这些说成「你刚说」）\n"

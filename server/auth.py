@@ -126,7 +126,7 @@ async def _ensure_user_ai(user_id: int) -> int:
     if u.get("ai_me_id"):
         return int(u["ai_me_id"])
     name = str(u.get("nickname") or u.get("username") or f"用户{user_id}")[:20]
-    voice = str(settings.get("tts.voice") or "")
+    voice = settings.default_voice()
     ai_id = await db.pool().insert(
         "INSERT INTO xd_ais (user_id, name, voice_id, is_alive, sync_with_user, lang) "
         "VALUES (%s,%s,%s,1,0,'zh')", [int(user_id), name, voice])
@@ -144,7 +144,7 @@ async def ensure_public_ai() -> int:
     return int(await db.pool().insert(
         "INSERT INTO xd_ais (user_id, name, voice_id, is_alive, is_public, lang) "
         "VALUES (0,%s,%s,1,1,'zh')",
-        [name, str(settings.get("tts.voice") or "")]))
+        [name, settings.default_voice()]))
 
 
 # ══════════════════ 接口 ══════════════════

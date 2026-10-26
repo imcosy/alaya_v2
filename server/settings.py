@@ -2,10 +2,12 @@
 #
 # 优先级：环境变量 > config.json > 内置默认值。
 # 控制台（/api/config）可读可改；改完立即写回 config.json（原子替换），
-# LLM/ASR/TTS/Embedding 客户端每次调用都读当前值，无需重启。
+# 所有客户端调用都读当前值，无需重启。
 #
-# 设计边界：本项目不自带任何模型。语音对话、语义向量全部走外部
-# OpenAI 兼容接口，由使用者自行到各厂商申请 key 填入。
+# 设计边界：本项目不自带任何模型。对话 / 看图 / 语音识别 / 语音合成 / 语义向量
+# 全部走「一把 Key 的统一网关」（OpenAI 兼容协议），在
+# https://dev.nice-ai.cn/open/ 登录后申请 Key 填入即可。
+# 想接自己的模型服务的开发者，改 server/llm.py 里的调用即可，本项目不保留多厂商配置。
 import json
 import os
 import threading
@@ -13,8 +15,32 @@ import threading
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.getenv("ALAYA_CONFIG", os.path.join(ROOT, "config.json"))
 
-# OpenAI 兼容端点：OpenAI / DeepSeek / 阿里百炼 / 硅基流动 / 火山方舟 等
-# 只要厂商提供 /v1/chat/completions、/v1/audio/*、/v1/embeddings，填 base_url 即可。
+# 申请 Key 的入口（页面只做登录 / 申请 / 管理 Key）
+KEY_PORTAL = "https://dev.nice-ai.cn/open/"
+# 默认接口地址
+DEFAULT_BASE_URL = "https://dev.nice-ai.cn/open/v1"
+
+# 网关对外提供的中性模型名（只是协议名，不代表内部实现）
+CHAT_MODEL = "s2s"
+ASR_MODEL = "s2s"
+TTS_MODEL = "s2s"
+EMB_MODEL = "s2s-embedding"
+
+# 网关提供的音色别名（切换音色只在这份清单里选）
+VOICES = [
+    {"id": "zh-female-1", "name": "温柔女声", "emoji": "🌸", "gender": "female"},
+    {"id": "zh-female-2", "name": "清亮女声", "emoji": "✨", "gender": "female"},
+    {"id": "zh-female-3", "name": "成熟女声", "emoji": "🌷", "gender": "female"},
+    {"id": "zh-male-1", "name": "沉稳男声", "emoji": "🌊", "gender": "male"},
+    {"id": "zh-male-2", "name": "年轻男声", "emoji": "🍃", "gender": "male"},
+    {"id": "en-female-1", "name": "英文女声", "emoji": "🌍", "gender": "female"},
+    {"id": "en-male-1", "name": "英文男声", "emoji": "🌐", "gender": "male"},
+]
+DEFAULT_VOICE = "zh-female-1"
+
+# 情绪换声（留空 = 所有情绪都用本体自己的音色；语义标记仍然照常写入记忆）
+EMOTION_VOICES: dict = {}
+
 DEFAULTS: dict = {
     "server": {
         "host": "0.0.0.0",
@@ -22,54 +48,9 @@ DEFAULTS: dict = {
         # 新用户注册后自动创建的本体名（占位，随对话演化）
         "default_ai_name": "如意",
     },
-    "llm": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "",
-        "model": "gpt-4o-mini",
-        "temperature": 0.8,
-        "max_tokens": 1024,
-    },
-    # 看图（照片描述 / 摄像头画面）。model 留空 = 复用 llm 的多模态模型
-    "vision": {
-        "base_url": "",
-        "api_key": "",
-        "model": "",
-    },
-    "asr": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "",
-        "model": "whisper-1",
-        "language": "zh",
-    },
-    "tts": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "",
-        "model": "tts-1",
-        "voice": "nova",
-        # wav = 返回带 RIFF 头的 WAV；pcm = 裸 16bit 单声道小端 PCM
-        "format": "wav",
-        # 仅 format=pcm 时使用：厂商实际输出采样率
-        "sample_rate": 24000,
-        "speed": 1.0,
-        # 可选音色清单（控制台「我的声音」里展示，可设为某个本体的音色）
-        # [{"id": "nova", "name": "Nova 女声"}, ...]
-        "voices": [],
-        # 情绪 → 音色名（回复开头有 [[情绪:xx]] 标记时随情换声）
-        # {"伤心": "shimmer", "兴奋": "nova"}
-        "emotion_voices": {},
-    },
-    "embedding": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "",
-        "model": "text-embedding-3-small",
-        # 由首次调用自动写入（换模型会触发向量重建）
-        "dim": 0,
-    },
-    # 声纹（听声识人）可选外挂：外部 ASR 厂商都不返回 speaker embedding。
-    # 关闭时单人使用场景 = 说话人即当前登录用户本人。
-    "speaker": {
-        "enabled": False,
-        "base_url": "",
+    # 统一网关：一个地址 + 一把 Key，全部能力都走它
+    "gateway": {
+        "base_url": DEFAULT_BASE_URL,
         "api_key": "",
     },
 }
@@ -94,19 +75,8 @@ def _env_overrides() -> dict:
     pairs = [
         ("ALAYA_HOST", ("server", "host")),
         ("ALAYA_PORT", ("server", "port")),
-        ("ALAYA_LLM_BASE", ("llm", "base_url")),
-        ("ALAYA_LLM_KEY", ("llm", "api_key")),
-        ("ALAYA_LLM_MODEL", ("llm", "model")),
-        ("ALAYA_ASR_BASE", ("asr", "base_url")),
-        ("ALAYA_ASR_KEY", ("asr", "api_key")),
-        ("ALAYA_ASR_MODEL", ("asr", "model")),
-        ("ALAYA_TTS_BASE", ("tts", "base_url")),
-        ("ALAYA_TTS_KEY", ("tts", "api_key")),
-        ("ALAYA_TTS_MODEL", ("tts", "model")),
-        ("ALAYA_TTS_VOICE", ("tts", "voice")),
-        ("ALAYA_EMB_BASE", ("embedding", "base_url")),
-        ("ALAYA_EMB_KEY", ("embedding", "api_key")),
-        ("ALAYA_EMB_MODEL", ("embedding", "model")),
+        ("ALAYA_GATEWAY_BASE", ("gateway", "base_url")),
+        ("ALAYA_GATEWAY_KEY", ("gateway", "api_key")),
     ]
     for env, (sec, key) in pairs:
         v = os.getenv(env)
@@ -139,7 +109,7 @@ def section(name: str) -> dict:
 
 
 def get(path: str, default=None):
-    """settings.get("llm.model")"""
+    """settings.get("gateway.api_key")"""
     cur = load()
     for part in path.split("."):
         if not isinstance(cur, dict) or part not in cur:
@@ -170,7 +140,7 @@ def save(patch: dict) -> dict:
 
 
 def persist_value(path: str, value) -> None:
-    """单值落盘（如 embedding.dim 由运行时测得）"""
+    """单值落盘（如 gateway.embedding_dim 由运行时测得）"""
     parts = path.split(".")
     node: dict = {}
     cur = node
@@ -199,3 +169,15 @@ def mask(cfg: dict) -> dict:
 def is_configured(sec: str) -> bool:
     s = section(sec)
     return bool(str(s.get("base_url") or "").strip() and str(s.get("api_key") or "").strip())
+
+
+def voice_list() -> list[dict]:
+    return [dict(v) for v in VOICES]
+
+
+def default_voice() -> str:
+    return DEFAULT_VOICE
+
+
+def emotion_voices() -> dict:
+    return dict(EMOTION_VOICES)

@@ -273,6 +273,16 @@
   .vbtn.red { background:#3a2020; color:#e08c8c; }
   .vbtn.confirm { background:#8a3a3a; color:#ffd9d9; }
   /* ── 波形编辑器 ── */
+  .waveform-editor { background:#131722; border:1px solid #2a2e3a; border-radius:12px; overflow:hidden; margin-top:10px; }
+  .waveform-editor-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid #232837; gap:8px; }
+  .waveform-editor-title { font-size:13px; font-weight:600; color:#e8c88a; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .waveform-canvas-wrap { padding:10px; }
+  .waveform-canvas { width:100%; height:120px; border-radius:8px; background:rgba(0,0,0,.3); touch-action:none; cursor:crosshair; display:block; }
+  .waveform-time { text-align:center; font-size:12px; color:#8a92a3; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .waveform-controls, .waveform-toolbar { display:flex; gap:8px; padding:8px 10px; flex-wrap:wrap; justify-content:center; border-top:1px solid #232837; }
+  .wbtn { background:#232837; color:#c8cdd8; border:1px solid #2a2e3a; border-radius:9px; padding:7px 12px; font-size:12.5px; cursor:pointer; }
+  .wbtn.primary { background:#2b2416; color:#e8c88a; border-color:rgba(184,146,90,.45); }
+  .wbtn.back { background:transparent; border:none; color:#7a8194; flex:none; }
   /* ── 我的形象 ── */
   .faceup { text-align:center; border:1.5px dashed rgba(184,146,90,.5); color:#e8c88a; border-radius:12px; padding:14px; font-size:13.5px; cursor:pointer; margin-bottom:12px; }
   .faceup:active { transform:scale(.98); }
@@ -448,7 +458,7 @@ const OP_NAME = {recall:'读即写', strengthen:'共现强化', decay:'半衰', 
 // 控制台只有一个观察主体：ownerAiId = 当前选中的 AI 本体。
 // 切谁就看谁的大脑实况——种子库 / 习气网络 / 我识 / 声音形象 / 意识海全部跟随它。
 // （旧实现另有一路 memAiId，来自服务端 ready.owner_ai_id；guide 模式下那是「记忆归属A=用户本体」，
-//   于是切到如意后，种子库/我识读的全是用户本体，与意识海各显示一个本体——用户反馈的错乱源。）
+//   于是切到如意后，种子库/我识读的全是用户本体，与意识海各显示一个本体——华哥反馈的错乱源。）
 let ws = null, ownerAiId = 0, ready = false, curPage = 'seeds';
 let recording = false, stream = null, ctxIn = null, proc = null, srcNode = null, muteGain = null;
 let speech = false, silenceMs = 0;
@@ -665,26 +675,12 @@ $('btnUser').onclick = async () => {
   openSheet('我的资料');
 };
 
-/* ── 模型设置：外部 ASR / LLM / TTS / 向量接口（写回 config.json，立即生效） ── */
+/* ── 模型设置：一把 Key 的统一网关（写回 config.json，立即生效） ── */
+const KEY_PORTAL = 'https://dev.nice-ai.cn/open/';
 const CFG_GROUPS = [
-  ['llm', '语言模型 LLM（对话 / 抽取 / 我识凝聚）',
-    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
-     ['model', '模型名', 'gpt-4o-mini']]],
-  ['vision', '视觉模型（看图 / 照片描述，留空复用 LLM）',
-    [['base_url', '接口地址', ''], ['api_key', 'API Key', ''], ['model', '模型名', '']]],
-  ['asr', '语音识别 ASR（OpenAI 兼容 /audio/transcriptions）',
-    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
-     ['model', '模型名', 'whisper-1'], ['language', '识别语言', 'zh']]],
-  ['tts', '语音合成 TTS（OpenAI 兼容 /audio/speech）',
-    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
-     ['model', '模型名', 'tts-1'], ['voice', '默认音色', 'nova'],
-     ['format', '返回格式 wav/pcm', 'wav'], ['speed', '语速', '1.0']]],
-  ['embedding', '向量模型 Embedding（记忆召回的唯一语义坐标）',
-    [['base_url', '接口地址', 'https://api.openai.com/v1'], ['api_key', 'API Key', 'sk-...'],
-     ['model', '模型名', 'text-embedding-3-small']]],
-  ['speaker', '声纹服务（可选：外部 ASR 不返回声纹，不填则说话人=登录用户本人）',
-    [['enabled', '是否启用 true/false', 'false'], ['base_url', '接口地址', ''],
-     ['api_key', 'API Key', '']]],
+  ['gateway', '统一接口（一个 Key 即可：对话 / 看图 / 识别 / 合成 / 向量）',
+    [['base_url', '接口地址', 'https://dev.nice-ai.cn/open/v1'],
+     ['api_key', 'API Key', 'sk-s2s-...']]],
 ];
 
 async function openConfigSheet() {
@@ -714,15 +710,13 @@ async function openConfigSheet() {
     (fields || []).forEach(([k, label, ph]) => {
       body.appendChild(mk(sec, k, label, ph, (cfg[sec] || {})[k]));
     });
-    if (sec === 'tts') {
-      const vs = (cfg.tts && cfg.tts.voices) || [];
-      body.appendChild(mk('tts', '__voices', '音色清单（每行一个：音色id|显示名）',
-        'nova|Nova 女声\nshimmer|Shimmer 女声', vs.map(v => v.id + '|' + (v.name || v.id)).join('\n')));
-      const ev = (cfg.tts && cfg.tts.emotion_voices) || {};
-      body.appendChild(mk('tts', '__emotion', '情绪换声（每行一个：情绪|音色id）',
-        '伤心|shimmer\n兴奋|nova', Object.keys(ev).map(k => k + '|' + ev[k]).join('\n')));
-    }
   });
+  const applyBtn = el('div', 'cfgportal', '🔑 还没有 Key？点这里登录并申请 →');
+  applyBtn.style.cssText = 'margin:2px 0 14px;padding:11px 13px;border-radius:10px;'
+    + 'background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.35);'
+    + 'color:#a5b4fc;font-size:13px;cursor:pointer;text-align:center';
+  applyBtn.onclick = () => window.open(KEY_PORTAL, '_blank', 'noopener');
+  body.appendChild(applyBtn);
   body.appendChild(el('div', 'cfghead', '公共设置'));
   body.appendChild(mk('server', 'default_ai_name', '公共本体名称（默认「如意」）', '如意',
     (cfg.server || {}).default_ai_name));
@@ -732,23 +726,9 @@ async function openConfigSheet() {
     const put = (sec, key, val) => { (patch[sec] = patch[sec] || {})[key] = val; };
     CFG_GROUPS.forEach(([sec, , fields]) => {
       (fields || []).forEach(([k]) => {
-        const v = inputs[sec + '.' + k].value.trim();
-        put(sec, k, k === 'enabled' ? (v === 'true' || v === '1') :
-                      (k === 'speed' ? (Number(v) || 1.0) : v));
+        put(sec, k, inputs[sec + '.' + k].value.trim());
       });
     });
-    const parseLines = (txt, asObj) => {
-      const out = asObj ? {} : [];
-      txt.split('\n').map(x => x.trim()).filter(Boolean).forEach(line => {
-        const p = line.split('|');
-        const id = (p[0] || '').trim(), nm = (p[1] || p[0] || '').trim();
-        if (!id) return;
-        if (asObj) out[id] = nm; else out.push({ id, name: nm });
-      });
-      return out;
-    };
-    patch.tts.voices = parseLines(inputs['tts.__voices'].value, false);
-    patch.tts.emotion_voices = parseLines(inputs['tts.__emotion'].value, true);
     patch.server = { default_ai_name: inputs['server.default_ai_name'].value.trim() || '如意' };
     save.disabled = true;
     try {
@@ -1007,7 +987,7 @@ async function loadXixi() {
   $('engStat').innerHTML =
     `<div class="it"><b>${s.seeds}</b><span>种子总量</span></div>` +
     `<div class="it"><b>${s.vectors}</b><span>向量索引</span></div>` +
-    `<div class="it"><b style="color:${s.emb_ready ? '#7dc98f' : '#c9a37d'}">${s.emb_ready ? '在线' : '未配置'}</b><span>向量反射</span></div>` +
+    `<div class="it"><b style="color:${s.emb_ready ? '#7dc98f' : '#c9a37d'}">${s.emb_ready ? '在线' : '懒加载'}</b><span>bge 反射</span></div>` +
     `<div class="it" style="min-width:140px"><b style="font-size:13px">${esc(s.time || '')}</b><span>服务器时间</span></div>`;
   const d = await api('/api/xixi_log?limit=120');
   $('xixiList').innerHTML = '';
@@ -1295,9 +1275,10 @@ function faceInit() {
   requestAnimationFrame(faceFrame);
 }
 async function faceLoad() {
-  // ⚠️ 文件名用 .mesh 而不是 .json —— 静态服务器/反代常有针对 .json/.txt/.md 的
-  //    全局规则，会把请求指到别的目录，导致这里 404 拿到一段 HTML（曾踩）。
-  //    换头模就用 tools/gen_face_mesh.py 重跑覆盖本文件。
+  // ⚠️ 文件名必须是 .mesh，不能是 .json —— nginx 有一条全局规则
+  //    location ~* \.(json|txt|md)$ { root .../dev-nice-ai_cn/public; try_files $uri =404; }
+  //    会把所有 .json 请求强制指向另一个目录，导致这里 404 拿到一段 HTML（曾踩）。
+  //    同理 .txt / .md 也不能用。换头模就用 alaya/tools/gen_face_mesh.py 重跑覆盖本文件。
   try {
     const d = await (await fetch('face_mesh.mesh')).json();
     face.v = new Float32Array(d.v);
@@ -1502,8 +1483,8 @@ function stopPlay() {
 }
 
 /* ── 录音 + VAD（静音800ms自动提交；播放中说话=打断） ──
-   自打断防治三重门控（实测参数）：开播保护期1.2s + 高阈值0.06 + 持续3帧(约380ms) */
-// 静音判定 800ms：实测 2026-10-24 定。600ms 太短——用户一句话中间换气就被当成"说完了"。
+   自打断防治三重门控（借鉴sisi_web实证参数）：开播保护期1.2s + 高阈值0.06 + 持续3帧(约380ms) */
+// 静音判定 800ms：华哥 2026-10-24 定。600ms 太短——用户一句话中间换气就被当成"说完了"。
 // 这里不是延时大头（省下的 0.2 秒换不来体验），延时要去处理链路里查。
 const RMS_ON = 0.018, SILENCE_MS = 800;
 // 起录门控：与打断门控(BARGE_FRAMES)对称——**人说话是连续多帧的，瞬态噪声不是**。
@@ -1574,7 +1555,7 @@ async function startRec() {
           preRoll = [];
           // 摄像头开着：开口这一刻就异步截帧上传，与"用户继续说话"并行。
           // 过去是在 stop 时 await uploadFrame()，把那 0.3~1.5 秒（截图+上传+存盘）
-          // 整段加进了回复延时（用户反馈"说完要等十秒"的一部分）。
+          // 整段加进了回复延时（华哥反馈"说完要等十秒"的一部分）。
           lastFrameId = '';
           if (camOn) uploadFrame().then(id => { lastFrameId = id || ''; }).catch(() => {});
           $('hint').textContent = '聆听中… 说完即答';
@@ -1609,7 +1590,7 @@ async function startRec() {
         //   getChannelData(0) 每次返回的是同一个 Float32Array，下一帧回调就把它的内容
         //   覆盖掉了。直接 push(f) 存的是引用，等起录时再回放，这 3 帧"预滚"里装的全是
         //   当前这一帧（开口第一字）的副本——于是第一个音节被连发 3+1 次，ASR 听成
-        //   「我我我爸叫张建国」「说说说，我爷爷叫什么名字」。这就是每句话开头叠字的根。
+        //   「我我我爸叫谢垂源」「说说说，我爷爷叫什么名字」。这就是每句话开头叠字的根。
         preRoll.push(f.slice());
         const maxFrames = Math.ceil(PRE_ROLL_MS / ((f.length / 16000) * 1000));
         while (preRoll.length > maxFrames) preRoll.shift();
@@ -1749,43 +1730,329 @@ async function compressImage(file, maxKB = 500) {
   return blob;
 }
 
-/* ── 音色：外部 TTS 的音色清单（控制台 tts.voices），可切换该本体的说话音色 ── */
+/* ── 我的声音：登录用户名下音色（xd_voices，试听/编辑/删除） ── */
+let AUD = null;
+function audUrl(v) { return API_BASE + `api/voice_audio?${authQ({ owner_ai_id: ownerAiId, voice_id: v.id })}`; }
 async function openVoiceSheet() {
   if (!ownerAiId) return toast('连接中，稍候再试');
-  openSheet('音色');
+  openSheet('我的声音');
   const body = $('sheetBody'); body.innerHTML = '<div class="empty">加载中…</div>';
-  let d;
-  try { d = await api('/api/voices?owner_ai_id=' + ownerAiId); }
-  catch (e) { body.innerHTML = '<div class="empty">加载失败</div>'; return; }
+  const d = await api('/api/voices?owner_ai_id=' + ownerAiId);
   const list = d.voices || [];
   body.innerHTML = '';
-  if (!list.length) {
-    body.appendChild(el('div', 'empty', '还没有配置音色：我的资料 → 模型设置 → TTS 音色清单'));
-    return;
-  }
+  if (!list.length) { body.appendChild(el('div', 'empty', '名下还没有自己的声音')); return; }
   list.forEach(v => {
     const row = el('div', 'vrow');
-    row.innerHTML = `<span class="vt">${esc(v.emoji || '🔊')}</span>` +
-      `<span class="vn"><b>${esc(v.name || v.id)}</b><span>${esc(v.id)}${v.in_use ? ' · 使用中' : ''}</span></span>`;
+    row.innerHTML = `<span class="vt">${esc(v.emoji || '🎙')}</span>` +
+      `<span class="vn"><b>${esc(v.voice_name || ('音色#' + v.id))}</b>` +
+      `<span>${esc(v.tags || v.description || '')}${v.in_use ? ' · 使用中' : ''}</span></span>`;
     const ops = el('span', 'vop');
-    const bUse = el('button', 'vbtn', v.in_use ? '✓' : '用');
-    bUse.title = v.in_use ? '当前音色' : '设为这个本体的音色';
-    bUse.onclick = async () => {
-      if (v.in_use) return;
-      try {
-        const r = await api(`/api/voices/select?owner_ai_id=${ownerAiId}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ voice_id: v.id }) });
-        if (r.error || r.detail) return toast(r.error || r.detail);
-        toast('已切换音色：' + (v.name || v.id));
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'voice', voice: v.id }));
-        openVoiceSheet();
-      } catch (e) { toast('切换失败：' + e.message); }
+    const bPlay = el('button', 'vbtn', '▶'); bPlay.title = '试听';
+    bPlay.onclick = () => {
+      if (AUD && !AUD.paused) { AUD.pause(); bPlay.textContent = '▶'; return; }
+      if (AUD) AUD.pause();
+      AUD = new Audio(audUrl(v));
+      AUD.play().catch(() => toast('试听失败'));
+      bPlay.textContent = '⏸';
+      AUD.onended = () => { bPlay.textContent = '▶'; };
     };
-    ops.appendChild(bUse);
+    const bEdit = el('button', 'vbtn', '✏️'); bEdit.title = '编辑音频';
+    bEdit.onclick = () => openVoiceEditor(v);
+    const bDel = el('button', 'vbtn red', '🗑'); bDel.title = v.in_use ? '正被AI使用，不可删除' : '删除';
+    bDel.onclick = () => {
+      if (v.in_use) return toast('该音色正被AI本体使用，请先给AI换音色');
+      if (bDel.dataset.arm) { delVoice(v, row); return; }
+      bDel.dataset.arm = '1'; bDel.classList.add('confirm'); bDel.textContent = '确认？';
+      setTimeout(() => { delete bDel.dataset.arm; bDel.classList.remove('confirm'); bDel.textContent = '🗑'; }, 2600);
+    };
+    ops.appendChild(bPlay); ops.appendChild(bEdit); ops.appendChild(bDel);
     row.appendChild(ops);
     body.appendChild(row);
   });
+}
+async function delVoice(v, row) {
+  try {
+    const d = await api(`/api/voices/${v.id}?owner_ai_id=${ownerAiId}`, { method: 'DELETE' });
+    if (d.error || d.detail) return toast(d.error || d.detail || '删除失败');
+    row.remove(); toast('已删除该声音');
+    if (!$('sheetBody').querySelector('.vrow')) $('sheetBody').appendChild(el('div', 'empty', '名下还没有自己的声音'));
+  } catch (e) { toast('删除失败：' + e.message); }
+}
+
+/* ── 波形编辑器（源自 ai_tts 音频编辑组件，voice_id 模式覆盖 ref_audio） ── */
+const waveEd = { voiceId: 0, ctx: null, buf: null, origBuf: null, workBuf: null, duration: 0,
+  selS: null, selE: null, dragging: false, playing: false, source: null,
+  playhead: 0, animId: null, playStartAt: 0, playOffset: 0 };
+function fmtDur(s) { if (!s || s < 0) return '0:00'; return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); }
+function copyBuf(src, ctx) {
+  const dst = ctx.createBuffer(src.numberOfChannels, src.length, src.sampleRate);
+  for (let ch = 0; ch < src.numberOfChannels; ch++) dst.getChannelData(ch).set(src.getChannelData(ch));
+  return dst;
+}
+async function openVoiceEditor(v) {
+  const body = $('sheetBody');
+  if (AUD) { AUD.pause(); AUD = null; }
+  waveEd.voiceId = v.id; waveEd.selS = null; waveEd.selE = null; waveEd.playhead = 0;
+  body.innerHTML = `<div class="waveform-editor">
+    <div class="waveform-editor-header">
+      <span class="waveform-editor-title">编辑：${esc(v.voice_name || ('音色#' + v.id))} ${esc(v.emoji || '')}</span>
+      <button class="wbtn back" id="weBack">← 返回</button>
+    </div>
+    <div class="waveform-canvas-wrap"><canvas id="weCanvas" class="waveform-canvas"></canvas>
+      <div class="waveform-time" id="weTime">加载中…</div></div>
+    <div class="waveform-controls">
+      <button class="wbtn" id="weDel">✂️ 删除选区</button>
+      <button class="wbtn" id="weSil">🔇 静音选区</button>
+      <button class="wbtn" id="weGain">🔊 增益</button>
+      <button class="wbtn" id="weDenoise">🧹 降噪</button>
+    </div>
+    <div class="waveform-toolbar">
+      <button class="wbtn" id="wePlay">▶ 播放</button>
+      <button class="wbtn" id="weReset">↺ 重置</button>
+      <button class="wbtn primary" id="weSave">💾 保存并覆盖</button>
+    </div></div>`;
+  $('weBack').onclick = () => { closeVoiceEditor(); openVoiceSheet(); };
+  bindEditorEvents();
+  try {
+    const r = await fetch(audUrl(v), { cache: 'no-store' });
+    if (!r.ok) throw new Error('加载音频失败');
+    const ab = await r.arrayBuffer();
+    if (!waveEd.ctx || waveEd.ctx.state === 'closed') waveEd.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (waveEd.ctx.state === 'suspended') await waveEd.ctx.resume();
+    const decoded = await waveEd.ctx.decodeAudioData(ab);
+    waveEd.buf = decoded;
+    waveEd.origBuf = copyBuf(decoded, waveEd.ctx);
+    waveEd.workBuf = copyBuf(decoded, waveEd.ctx);
+    const trimmed = trimSilence(waveEd.workBuf);
+    if (trimmed && trimmed !== waveEd.workBuf) waveEd.workBuf = trimmed;
+    waveEd.duration = waveEd.workBuf.duration;
+    $('weTime').textContent = fmtDur(0) + ' / ' + fmtDur(waveEd.duration);
+    drawWave();
+  } catch (e) {
+    console.error(e); drawEmptyWave(); $('weTime').textContent = '加载失败';
+  }
+}
+function closeVoiceEditor() {
+  if (waveEd.animId) { cancelAnimationFrame(waveEd.animId); waveEd.animId = null; }
+  weStop();
+  if (waveEd.ctx) { try { waveEd.ctx.close(); } catch (e) {} waveEd.ctx = null; }
+  waveEd.buf = null; waveEd.origBuf = null; waveEd.workBuf = null; waveEd.voiceId = 0;
+}
+function drawWave(phProgress) {
+  const canvas = $('weCanvas');
+  if (!canvas || !waveEd.workBuf) return;
+  const data = waveEd.workBuf.getChannelData(0);
+  const ctx2 = canvas.getContext('2d');
+  const w = canvas.parentElement ? canvas.parentElement.clientWidth - 20 : 400;
+  canvas.width = w; canvas.height = 120;
+  const h = 120;
+  ctx2.clearRect(0, 0, w, h);
+  ctx2.fillStyle = 'rgba(0,0,0,0.3)'; ctx2.fillRect(0, 0, w, h);
+  ctx2.strokeStyle = 'rgba(255,255,255,0.05)'; ctx2.beginPath(); ctx2.moveTo(0, h / 2); ctx2.lineTo(w, h / 2); ctx2.stroke();
+  const total = data.length;
+  ctx2.strokeStyle = 'rgba(184, 146, 90, 0.75)'; ctx2.beginPath();
+  for (let x = 0; x < w; x++) {
+    const i0 = Math.floor(x * total / w), i1 = Math.floor((x + 1) * total / w);
+    let min = 1.0, max = -1.0;
+    for (let j = i0; j < i1 && j < total; j++) { const v = data[j]; if (v < min) min = v; if (v > max) max = v; }
+    ctx2.moveTo(x, (1 - max) * h / 2); ctx2.lineTo(x, (1 - min) * h / 2);
+  }
+  ctx2.stroke();
+  if (waveEd.selS !== null && waveEd.selE !== null) {
+    const sx = Math.min(waveEd.selS, waveEd.selE), ex = Math.max(waveEd.selS, waveEd.selE);
+    ctx2.fillStyle = 'rgba(184,146,90,.22)'; ctx2.fillRect(sx, 0, ex - sx, h);
+    ctx2.strokeStyle = 'rgba(232,200,138,.9)'; ctx2.lineWidth = 1;
+    ctx2.beginPath(); ctx2.moveTo(sx, 0); ctx2.lineTo(sx, h); ctx2.moveTo(ex, 0); ctx2.lineTo(ex, h); ctx2.stroke();
+  }
+  const ph = (phProgress !== undefined && phProgress >= 0) ? phProgress : (waveEd.duration > 0 ? waveEd.playhead / waveEd.duration : 0);
+  const phX = ph * w;
+  ctx2.strokeStyle = '#e8c88a'; ctx2.lineWidth = 2; ctx2.beginPath(); ctx2.moveTo(phX, 0); ctx2.lineTo(phX, h); ctx2.stroke();
+  ctx2.fillStyle = '#e8c88a'; ctx2.beginPath(); ctx2.arc(phX, h / 2, 4, 0, Math.PI * 2); ctx2.fill();
+  // 选区交互（鼠标+触摸）
+  const xPosOf = clientX => { const rect = canvas.getBoundingClientRect(); return Math.max(0, Math.min(w, clientX - rect.left)); };
+  const down = x => { waveEd.selS = x; waveEd.selE = x; waveEd.dragging = true; drawWave(); };
+  const move = x => { if (!waveEd.dragging) return; waveEd.selE = x; drawWave(); };
+  const up = () => {
+    const was = waveEd.dragging; waveEd.dragging = false;
+    if (was && waveEd.selS !== null && waveEd.selE !== null && Math.abs(waveEd.selE - waveEd.selS) < 3) {
+      waveEd.playhead = (waveEd.selS / w) * waveEd.duration;
+      waveEd.selS = null; waveEd.selE = null;
+      $('weTime').textContent = fmtDur(waveEd.playhead) + ' / ' + fmtDur(waveEd.duration);
+      drawWave();
+    }
+  };
+  canvas.onmousedown = e => down(xPosOf(e.clientX));
+  canvas.onmousemove = e => move(xPosOf(e.clientX));
+  canvas.onmouseup = up;
+  canvas.onmouseleave = () => { waveEd.dragging = false; };
+  canvas.ontouchstart = e => { e.preventDefault(); const t = e.touches[0]; if (t) down(xPosOf(t.clientX)); };
+  canvas.ontouchmove = e => { e.preventDefault(); const t = e.touches[0]; if (t) move(xPosOf(t.clientX)); };
+  canvas.ontouchend = e => { e.preventDefault(); up(); };
+}
+function drawEmptyWave() {
+  const canvas = $('weCanvas');
+  if (!canvas) return;
+  const ctx2 = canvas.getContext('2d');
+  canvas.width = canvas.parentElement ? canvas.parentElement.clientWidth - 20 : 400;
+  canvas.height = 120;
+  ctx2.fillStyle = 'rgba(0,0,0,0.3)'; ctx2.fillRect(0, 0, canvas.width, 120);
+  ctx2.fillStyle = 'rgba(138,146,163,.6)'; ctx2.font = '13px sans-serif'; ctx2.textAlign = 'center';
+  ctx2.fillText('无法加载音频波形', canvas.width / 2, 65);
+}
+function selRange() {
+  if (waveEd.selS === null || waveEd.selE === null || waveEd.selS === waveEd.selE) return null;
+  const w = $('weCanvas').width || 400;
+  const p1 = Math.min(waveEd.selS, waveEd.selE) / w, p2 = Math.max(waveEd.selS, waveEd.selE) / w;
+  return { start: Math.floor(p1 * waveEd.workBuf.length), end: Math.floor(p2 * waveEd.workBuf.length) };
+}
+function weDelete() {
+  const rg = selRange();
+  if (!rg) return toast('先在波形上拖动选中一个区域');
+  const buf = waveEd.workBuf, old = buf.getChannelData(0);
+  const newLen = buf.length - (rg.end - rg.start);
+  if (newLen <= 0) return toast('不能删除全部音频');
+  const nd = new Float32Array(newLen);
+  nd.set(old.subarray(0, rg.start)); nd.set(old.subarray(rg.end), rg.start);
+  const nb = waveEd.ctx.createBuffer(1, newLen, buf.sampleRate);
+  nb.getChannelData(0).set(nd);
+  waveEd.workBuf = nb; waveEd.duration = nb.duration;
+  waveEd.selS = null; waveEd.selE = null;
+  $('weTime').textContent = fmtDur(0) + ' / ' + fmtDur(waveEd.duration);
+  drawWave();
+}
+function weSilence() {
+  const rg = selRange();
+  if (!rg) return toast('先在波形上拖动选中一个区域');
+  const d = waveEd.workBuf.getChannelData(0);
+  for (let i = rg.start; i < rg.end; i++) d[i] = 0;
+  waveEd.selS = null; waveEd.selE = null; drawWave();
+}
+function weGain() {
+  const rg = selRange();
+  if (!rg) return toast('先在波形上拖动选中一个区域');
+  const d = waveEd.workBuf.getChannelData(0);
+  for (let i = rg.start; i < rg.end; i++) d[i] = Math.max(-1, Math.min(1, d[i] * 1.5));
+  waveEd.selS = null; waveEd.selE = null; drawWave();
+}
+async function weDenoise() {
+  if (!waveEd.workBuf) return;
+  const btn = $('weDenoise'); btn.textContent = '降噪中…';
+  try {
+    const fd = new FormData();
+    fd.append('audio', bufToWavBlob(waveEd.workBuf), 'in.wav');
+    const r = await fetch(API_BASE + 'api/denoise_audio', authOpts({ method: 'POST', body: fd }));
+    if (!r.ok) throw new Error('降噪失败');
+    const ab = await r.arrayBuffer();
+    const nb = await waveEd.ctx.decodeAudioData(ab);
+    waveEd.workBuf = nb; waveEd.duration = nb.duration; drawWave();
+    toast('降噪完成');
+  } catch (e) { toast('降噪失败'); }
+  btn.textContent = '🧹 降噪';
+}
+function bufToWavBlob(buffer) {
+  const numCh = buffer.numberOfChannels, sr = buffer.sampleRate;
+  const data = buffer.getChannelData(0);
+  const dataLen = data.length * 2, totalLen = 44 + dataLen;
+  const ab = new ArrayBuffer(totalLen), view = new DataView(ab);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); view.setUint32(4, totalLen - 8, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, numCh, true);
+  view.setUint32(24, sr, true); view.setUint32(28, sr * numCh * 2, true);
+  view.setUint16(32, numCh * 2, true); view.setUint16(34, 16, true);
+  ws(36, 'data'); view.setUint32(40, dataLen, true);
+  let off = 44;
+  for (let i = 0; i < data.length; i++) { let s = Math.max(-1, Math.min(1, data[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); off += 2; }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+function wePlay() {
+  if (!waveEd.workBuf || !waveEd.ctx) return;
+  if (waveEd.playing) return weStop();
+  const ctx = waveEd.ctx;
+  if (ctx.state === 'suspended') ctx.resume();
+  const dur = waveEd.workBuf.duration;
+  const offset = Math.min(waveEd.playhead || 0, dur);
+  const src = ctx.createBufferSource();
+  src.buffer = waveEd.workBuf; src.connect(ctx.destination);
+  src.start(0, offset);
+  waveEd.source = src; waveEd.playing = true; waveEd.playStartAt = ctx.currentTime;
+  $('wePlay').textContent = '⏸ 暂停';
+  const anim = () => {
+    if (!waveEd.playing) { drawWave(); return; }
+    const pos = Math.min(offset + (ctx.currentTime - waveEd.playStartAt), dur);
+    waveEd.playhead = pos;
+    $('weTime').textContent = fmtDur(pos) + ' / ' + fmtDur(dur);
+    if (pos >= dur) { weStopAt(dur); return; }
+    drawWave(pos / dur);
+    waveEd.animId = requestAnimationFrame(anim);
+  };
+  waveEd.animId = requestAnimationFrame(anim);
+  src.onended = () => { if (waveEd.playing) weStopAt(dur); };
+}
+function weStopAt(atSec) {
+  waveEd.playing = false;
+  waveEd.playhead = Math.min(atSec != null ? atSec : waveEd.playhead, waveEd.duration);
+  $('wePlay').textContent = '▶ 播放';
+  $('weTime').textContent = fmtDur(waveEd.playhead) + ' / ' + fmtDur(waveEd.duration);
+  drawWave();
+}
+function weStop() {
+  if (waveEd.animId) { cancelAnimationFrame(waveEd.animId); waveEd.animId = null; }
+  if (waveEd.source) { try { waveEd.source.stop(); } catch (e) {} waveEd.source = null; }
+  if (waveEd.playing) { waveEd.playing = false; $('wePlay').textContent = '▶ 播放'; }
+}
+function weReset() {
+  if (!waveEd.origBuf || !waveEd.ctx) return;
+  weStop();
+  waveEd.workBuf = copyBuf(waveEd.origBuf, waveEd.ctx);
+  waveEd.duration = waveEd.workBuf.duration;
+  waveEd.selS = null; waveEd.selE = null; waveEd.playhead = 0;
+  $('weTime').textContent = fmtDur(0) + ' / ' + fmtDur(waveEd.duration);
+  drawWave();
+}
+async function weSave() {
+  if (!waveEd.workBuf) return toast('没有音频可保存');
+  const btn = $('weSave'); btn.textContent = '保存中…';
+  weStop();
+  try {
+    const fd = new FormData();
+    fd.append('audio', bufToWavBlob(waveEd.workBuf), 'edited.wav');
+    const r = await fetch(API_BASE + `api/voice_audio_save?${authQ({ owner_ai_id: ownerAiId, voice_id: waveEd.voiceId })}`,
+      authOpts({ method: 'POST', body: fd }));
+    const d = await r.json();
+    if (d.success) toast('✓ 已保存，TA的新声音即刻生效');
+    else toast('保存失败：' + (d.detail || d.error || '未知错误'));
+  } catch (e) { toast('保存失败：' + e.message); }
+  btn.textContent = '💾 保存并覆盖';
+}
+function bindEditorEvents() {
+  $('weDel').onclick = weDelete; $('weSil').onclick = weSilence; $('weGain').onclick = weGain;
+  $('weDenoise').onclick = weDenoise; $('wePlay').onclick = wePlay;
+  $('weReset').onclick = weReset; $('weSave').onclick = weSave;
+}
+function trimSilence(buffer) {
+  const sampleRate = buffer.sampleRate || 16000;
+  const data = buffer.getChannelData(0);
+  const len = data.length;
+  if (len < sampleRate * 0.5) return buffer;
+  const threshold = 0.02, windowSize = Math.floor(sampleRate * 0.05), keep = Math.floor(sampleRate * 0.2);
+  let startIdx = 0;
+  for (let i = 0; i <= len - windowSize; i += Math.floor(windowSize / 2)) {
+    let rms = 0;
+    for (let j = 0; j < windowSize; j++) rms += data[i + j] * data[i + j];
+    if (Math.sqrt(rms / windowSize) >= threshold) { startIdx = Math.max(0, i - keep); break; }
+  }
+  let endIdx = len;
+  for (let k = len - windowSize; k >= 0; k -= Math.floor(windowSize / 2)) {
+    let rms2 = 0;
+    for (let l = 0; l < windowSize; l++) rms2 += data[k + l] * data[k + l];
+    if (Math.sqrt(rms2 / windowSize) >= threshold) { endIdx = Math.min(len, k + windowSize + keep); break; }
+  }
+  if (startIdx >= endIdx) return buffer;
+  const newLen = endIdx - startIdx;
+  if (newLen > len * 0.95) return buffer;
+  const nb = buffer.context.createBuffer(1, newLen, buffer.sampleRate);
+  nb.getChannelData(0).set(data.subarray(startIdx, endIdx));
+  return nb;
 }
 
 /* ── 我的形象：形象照列表（上传→压缩800k→VLM第一人称描述→写入记忆；点击放大） ── */

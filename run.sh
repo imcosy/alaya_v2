@@ -14,7 +14,7 @@ fi
 
 if [ ! -f "config.json" ]; then
   cp config.example.json config.json
-  echo "==> 已生成 config.json，请填入各厂商的 base_url / api_key / model"
+  echo "==> 已生成 config.json，请填入统一网关的 API Key（https://dev.nice-ai.cn/open/ 申请）"
   echo "    也可以启动后在页面「我的资料 → 模型设置」里填写。"
 fi
 

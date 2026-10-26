@@ -818,7 +818,7 @@ async def star_chat(body: dict, user: dict = Depends(get_current_user)):
         import base64
         from server.llm import asr_recognize
         try:
-            text, _spk, _rms = await asr_recognize(base64.b64decode(pcm_b64))
+            text, _rms = await asr_recognize(base64.b64decode(pcm_b64))
         except Exception as e:
             log.error("[star] 语音识别失败: %s", e)
             return JSONResponse({"error": "没听清，再说一次吧"}, status_code=400)

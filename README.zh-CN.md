@@ -189,19 +189,28 @@ cd alaya_v2
 
 > 没填 key 也能启动，只是语音和回复不可用；顶部状态会显示"未配置"。
 
-### 需要准备四类接口（都是 OpenAI 兼容）
+### 一把 Key，一个端点
 
-| 能力 | 端点 | 备注 |
-|---|---|---|
-| LLM | `POST {base}/chat/completions` | 必须支持 `stream: true` |
-| ASR | `POST {base}/audio/transcriptions` | 上传 WAV，返回 `{"text": "..."}` |
-| TTS | `POST {base}/audio/speech` | 返回 `wav` 或裸 `pcm`（16bit 单声道） |
-| Embedding | `POST {base}/embeddings` | 记忆召回的唯一语义坐标 |
+对话 / 看图 / 语音识别 / 语音合成 / 语义向量，全部走同一个 OpenAI 兼容网关、同一把 Key：
 
-**最低配置**：LLM + Embedding 就能文字对话。补齐 ASR/TTS 才有语音。
+1. 打开 **https://dev.nice-ai.cn/open/**，手机号登录
+2. 申请一个 Key（`sk-s2s-...`）
+3. 填进页面（用户图标 → 我的资料 → ⚙️ 模型设置）或 `config.json`
 
-> OpenAI / DeepSeek / 阿里百炼 / 硅基流动 / 火山方舟…… 只要提供上述端点，填 `base_url` 即可。
-> 换 Embedding 模型会自动丢弃旧向量并全量重建，种子文本不受影响。
+| 能力 | 端点 |
+|---|---|
+| 对话 / 看图 | `POST {base}/chat/completions` |
+| 语音识别 | `POST {base}/audio/transcriptions` |
+| 语音合成 | `POST {base}/audio/speech`（48 kHz PCM） |
+| 向量 | `POST {base}/embeddings` |
+
+每把 Key 自带免费额度，申请页上能直接看到剩余。音色别名（`zh-female-1` …）由网关统一提供，
+在「我的资料 → 声音」里给每个本体选一个即可。
+
+本项目**不保留逐厂商填 Key 的配置**——想接自己的模型服务（vLLM / Ollama / Xinference / 任何 OpenAI 兼容
+服务），改 `server/llm.py` 这一个文件就行，它是唯一跟模型说话的地方。
+
+换 Embedding 模型会自动丢弃旧向量并全量重建，种子文本不受影响。
 
 ---
 
@@ -212,42 +221,22 @@ cd alaya_v2
 1. **页面里改**：用户图标 → 我的资料 → ⚙️ 模型设置
 2. **改文件**：`config.json`（模板见 [`config.example.json`](config.example.json)）
 
+```json
+{
+  "server": { "host": "0.0.0.0", "port": 9890, "default_ai_name": "如意" },
+  "gateway": { "base_url": "https://dev.nice-ai.cn/open/v1", "api_key": "sk-s2s-..." }
+}
+```
+
 也可以用环境变量（容器部署推荐，优先级最高）：
 
 ```bash
 ALAYA_PORT=9890
-ALAYA_LLM_BASE=...  ALAYA_LLM_KEY=...  ALAYA_LLM_MODEL=...
-ALAYA_ASR_BASE=...  ALAYA_ASR_KEY=...  ALAYA_ASR_MODEL=...
-ALAYA_TTS_BASE=...  ALAYA_TTS_KEY=...  ALAYA_TTS_MODEL=...  ALAYA_TTS_VOICE=...
-ALAYA_EMB_BASE=...  ALAYA_EMB_KEY=...  ALAYA_EMB_MODEL=...
+ALAYA_GATEWAY_BASE=https://dev.nice-ai.cn/open/v1
+ALAYA_GATEWAY_KEY=sk-s2s-...
 ```
 
-### 音色与情绪换声
-
-音色就是 TTS 厂商的音色名（不内置克隆），在控制台配一份清单：
-
-```json
-"tts": {
-  "voices": [
-    { "id": "nova",    "name": "Nova 女声",    "emoji": "🌸" },
-    { "id": "shimmer", "name": "Shimmer 女声", "emoji": "✨" }
-  ],
-  "emotion_voices": { "伤心": "shimmer", "兴奋": "nova", "低落": "alloy" }
-}
-```
-
-### 声纹（可选）
-
-外部 ASR 厂商都不返回 speaker embedding，所以**默认关闭**：单人使用时"麦克风前的人 = 当前登录用户"。
-
-要启用"听声识人"，自建一个声纹服务：
-
-```
-POST {speaker.base_url}/embedding     (multipart: audio=@a.wav)
-→ {"embedding": [0.01, -0.23, ...]}    # 192 维，余弦比对
-```
-
-然后在模型设置里打开 `speaker.enabled`。参考实现：CAM++ / 3D-Speaker。
+**声纹**：开放版是单人使用——麦克风前的人就是当前登录用户本人。
 
 ---
 

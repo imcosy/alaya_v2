@@ -32,25 +32,18 @@ FACE_DESC_PROMPT = (
 router = APIRouter()
 
 
-# ══════════════════ 声音（外部 TTS 音色） ══════════════════
+# ══════════════════ 声音（网关提供的音色） ══════════════════
 
 def _voice_list() -> list[dict]:
-    cfg = settings.section("tts")
-    items = [v for v in (cfg.get("voices") or []) if isinstance(v, dict) and v.get("id")]
-    if items:
-        return [{"id": str(v["id"]), "name": str(v.get("name") or v["id"]),
-                 "emoji": str(v.get("emoji") or "🔊"), "gender": str(v.get("gender") or "")}
-                for v in items]
-    fallback = str(cfg.get("voice") or "").strip()
-    return [{"id": fallback, "name": fallback, "emoji": "🔊", "gender": ""}] if fallback else []
+    return settings.voice_list()
 
 
 @router.get("/api/voices")
 async def api_voices(owner_ai_id: int, user: dict = Depends(get_current_user)):
-    """可切换音色清单（控制台 tts.voices）+ 该本体当前音色"""
+    """可切换音色清单 + 该本体当前音色"""
     await require_owner_ai(user, owner_ai_id)
     rows = await db.pool().query("SELECT name, voice_id FROM xd_ais WHERE id=%s", [int(owner_ai_id)])
-    cur = str(rows[0].get("voice_id") or "") if rows else str(settings.get("tts.voice") or "")
+    cur = str(rows[0].get("voice_id") or "") if rows else settings.default_voice()
     voices = _voice_list()
     for v in voices:
         v["in_use"] = 1 if v["id"] == cur else 0

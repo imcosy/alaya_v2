@@ -1,23 +1,20 @@
-# llm.py — 外部推理服务客户端（OpenAI 兼容协议）
+# llm.py — 统一网关客户端（OpenAI 兼容协议）
 #
-# 本项目不自带任何模型。四处能力全部走厂商的 OpenAI 兼容端点，由使用者在
-# 控制台「模型设置」里填 base_url / api_key / model：
-#   LLM   POST {base}/chat/completions   （流式 SSE）
-#   看图  同一个 chat/completions，content 数组带 image_url（视觉模型）
-#   ASR   POST {base}/audio/transcriptions（multipart 上传 WAV）
-#   TTS   POST {base}/audio/speech        （返回 wav 或裸 pcm）
+# 本项目不自带任何模型，四处能力全部走同一把 Key 的统一网关
+# （https://dev.nice-ai.cn/open/ 登录后申请）：
+#   LLM   POST {base}/chat/completions      （流式 SSE）
+#   看图  同一个 chat/completions，content 数组带 image_url
+#   ASR   POST {base}/audio/transcriptions  （multipart 上传 WAV）
+#   TTS   POST {base}/audio/speech          （返回 48kHz 裸 PCM）
 #   向量  POST {base}/embeddings
-# 声纹（听声识人）是可选项：外部 ASR 不返回 speaker embedding，
-# 只有配置了独立的声纹服务才启用；未配置时说话人即当前登录用户本人。
+# 想接自己的模型服务的开发者，改这里的地址与协议即可。
 from __future__ import annotations
 
 import io
 import json
-import math
 import base64
 import wave
 import logging
-from array import array
 from typing import AsyncGenerator
 
 import httpx
@@ -27,7 +24,7 @@ from . import settings
 
 log = logging.getLogger("alaya.llm")
 
-TTS_OUT_SR = 48000          # 服务端统一输出给前端的采样率（前端 AudioContext 固定 48k）
+TTS_OUT_SR = 48000          # 网关返回的采样率（前端 AudioContext 固定 48k）
 _CHUNK = 1024 * 256
 
 
@@ -36,24 +33,30 @@ def _client(timeout: float | None = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=t)
 
 
-def _headers(sec: dict) -> dict:
-    return {
-        "Authorization": f"Bearer {sec.get('api_key') or ''}",
-        "Content-Type": "application/json",
-    }
-
-
-def _url(sec: dict, path: str) -> str:
+def _gw() -> tuple[str, str]:
+    sec = settings.section("gateway")
     base = str(sec.get("base_url") or "").rstrip("/")
+    key = str(sec.get("api_key") or "")
     if not base:
-        raise RuntimeError("尚未配置 API 地址（控制台 → 模型设置）")
+        raise RuntimeError("尚未配置统一接口地址（我的资料 → 模型设置）")
+    return base, key
+
+
+def _headers() -> dict:
+    _, key = _gw()
+    return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+
+def _url(path: str) -> str:
+    base, _ = _gw()
     return base + path
 
 
 def _body_error(r: httpx.Response) -> str:
     try:
         j = r.json()
-        msg = j.get("error", {}).get("message") if isinstance(j.get("error"), dict) else j.get("error")
+        err = j.get("error")
+        msg = err.get("message") if isinstance(err, dict) else err
         return f"{r.status_code} {msg or json.dumps(j, ensure_ascii=False)[:300]}"
     except ValueError:
         return f"{r.status_code} {r.text[:300]}"
@@ -61,27 +64,24 @@ def _body_error(r: httpx.Response) -> str:
 
 # ══════════════════ LLM（流式 / 非流式）══════════════════
 
-def _chat_payload(messages: list, sec: dict, temperature: float, max_tokens: int,
+def _chat_payload(messages: list, temperature: float, max_tokens: int,
                   stream: bool) -> dict:
-    body = {
-        "model": sec.get("model"),
+    return {
+        "model": settings.CHAT_MODEL,
         "messages": messages,
-        "temperature": float(temperature if temperature is not None
-                             else sec.get("temperature", 0.8)),
-        "max_tokens": int(max_tokens or sec.get("max_tokens", 1024)),
+        "temperature": float(temperature if temperature is not None else 0.8),
+        "max_tokens": int(max_tokens or 1024),
         "stream": stream,
     }
-    return body
 
 
 async def llm_stream(messages: list, temperature: float = 0.7,
                      max_tokens: int = 1024) -> AsyncGenerator[str, None]:
     """流式对话：逐 token 产出增量文本"""
-    sec = settings.section("llm")
-    payload = _chat_payload(messages, sec, temperature, max_tokens, True)
+    payload = _chat_payload(messages, temperature, max_tokens, True)
     async with _client(timeout=None) as c:
-        async with c.stream("POST", _url(sec, "/chat/completions"),
-                            headers=_headers(sec), json=payload) as r:
+        async with c.stream("POST", _url("/chat/completions"),
+                            headers=_headers(), json=payload) as r:
             if r.status_code != 200:
                 await r.aread()
                 raise RuntimeError(f"LLM 服务错误：{_body_error(r)}")
@@ -110,10 +110,9 @@ async def llm_stream(messages: list, temperature: float = 0.7,
 async def llm_chat(messages: list, temperature: float = 0.7,
                    max_tokens: int = 1024) -> str:
     """非流式对话（抽取 / 我识凝聚 / 后台任务）"""
-    sec = settings.section("llm")
-    payload = _chat_payload(messages, sec, temperature, max_tokens, False)
+    payload = _chat_payload(messages, temperature, max_tokens, False)
     async with _client(timeout=120) as c:
-        r = await c.post(_url(sec, "/chat/completions"), headers=_headers(sec), json=payload)
+        r = await c.post(_url("/chat/completions"), headers=_headers(), json=payload)
         if r.status_code != 200:
             raise RuntimeError(f"LLM 服务错误：{_body_error(r)}")
         j = r.json()
@@ -124,7 +123,7 @@ async def llm_chat_fn(messages: list, temperature: float = 0.7, max_tokens: int 
     return await llm_chat(messages, temperature=temperature, max_tokens=max_tokens)
 
 
-# ══════════════════ 看图（视觉模型）══════════════════
+# ══════════════════ 看图 ══════════════════
 
 VL_DESC_PROMPT = (
     "只输出对画面的一句话描述，不超过40字，不要复述本要求、不要解释。"
@@ -145,26 +144,19 @@ def _img_mime(b: bytes) -> str:
 
 
 async def vl_describe(image_bytes: bytes, prompt: str | None = None) -> str:
-    """画面 → 一句话描述。vision.model 留空则复用 llm 的模型。"""
+    """画面 → 一句话描述（与对话同一个网关、同一个多模态模型）"""
     if not image_bytes:
         return ""
-    vis = settings.section("vision")
-    base = settings.section("llm")
-    sec = {
-        "base_url": vis.get("base_url") or base.get("base_url"),
-        "api_key": vis.get("api_key") or base.get("api_key"),
-        "model": vis.get("model") or base.get("model"),
-    }
     b64 = base64.b64encode(image_bytes).decode()
     msgs = [{"role": "user", "content": [
         {"type": "image_url",
          "image_url": {"url": f"data:{_img_mime(image_bytes)};base64,{b64}"}},
         {"type": "text", "text": prompt or VL_DESC_PROMPT}]}]
-    payload = _chat_payload(msgs, sec, 0.2, 200, False)
+    payload = _chat_payload(msgs, 0.2, 200, False)
     async with _client(timeout=90) as c:
-        r = await c.post(_url(sec, "/chat/completions"), headers=_headers(sec), json=payload)
+        r = await c.post(_url("/chat/completions"), headers=_headers(), json=payload)
         if r.status_code != 200:
-            raise RuntimeError(f"视觉模型错误：{_body_error(r)}")
+            raise RuntimeError(f"视觉服务错误：{_body_error(r)}")
         j = r.json()
         return str(((j.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
 
@@ -190,104 +182,51 @@ def pcm16k_to_wav(pcm: bytes) -> bytes:
     return buf.getvalue()
 
 
-async def _speaker_embedding(wav: bytes) -> str | None:
-    """可选的声纹服务：POST {base}/embedding，multipart 上传 wav，返回 {"embedding":[...]}"""
-    spk = settings.section("speaker")
-    if not spk.get("enabled") or not str(spk.get("base_url") or "").strip():
-        return None
-    headers = {}
-    if spk.get("api_key"):
-        headers["Authorization"] = f"Bearer {spk['api_key']}"
-    async with _client(timeout=60) as c:
-        r = await c.post(_url(spk, "/embedding"), headers=headers,
-                         files={"audio": ("a.wav", wav, "audio/wav")})
-        if r.status_code != 200:
-            raise RuntimeError(f"声纹服务错误：{_body_error(r)}")
-        emb = r.json().get("embedding")
-    if not emb:
-        return None
-    arr = np.asarray(emb, dtype=np.float32)
-    return base64.b64encode(arr.tobytes()).decode()
-
-
 async def asr_recognize(pcm16k: bytes, language: str = "auto", speaker: bool = False):
-    """16k int16 单声道 PCM → (text, speaker_emb_b64|None, rms)。
+    """16k int16 单声道 PCM → (text, speaker_emb|None, rms)。
 
-    speaker=True 时若配置了声纹服务则一并返回 CAM++ 192d 声纹（base64 float32）；
-    未配置声纹服务时第二项为 None（上层按「单人使用=本人」处理）。
+    开放版不接声纹服务：第二个返回值恒为 None，上层按「单人使用 = 登录用户本人」处理。
+    signature 保留三元组，是为了让调用方（听声识人链路）不用改。
     """
     rms = _rms(pcm16k)
     if not pcm16k or len(pcm16k) < 100:
         return ("", None, rms) if speaker else ("", rms)
-    sec = settings.section("asr")
     lang = str(language or "auto")
     if lang == "auto":
-        lang = str(sec.get("language") or "zh")
+        lang = "zh"
     wav = pcm16k_to_wav(pcm16k)
-    headers = {"Authorization": f"Bearer {sec.get('api_key') or ''}"}
-    data = {"model": str(sec.get("model") or "whisper-1"), "language": lang,
-            "response_format": "json"}
+    headers = {"Authorization": _headers()["Authorization"]}
+    data = {"model": settings.ASR_MODEL, "language": lang, "response_format": "json"}
     async with _client(timeout=120) as c:
-        r = await c.post(_url(sec, "/audio/transcriptions"), headers=headers, data=data,
+        r = await c.post(_url("/audio/transcriptions"), headers=headers, data=data,
                          files={"file": ("audio.wav", wav, "audio/wav")})
         if r.status_code != 200:
             raise RuntimeError(f"ASR 服务错误：{_body_error(r)}")
         text = str((r.json() or {}).get("text") or "").strip()
-    emb = await _speaker_embedding(wav) if speaker else None
     if not speaker:
         return text, rms
-    return text, emb, rms
+    return text, None, rms
 
 
 # ══════════════════ TTS ══════════════════
 
-def _resample(pcm: bytes, src_sr: int, ch: int = 1) -> bytes:
-    """int16 PCM → 48k 单声道 int16（前端 AudioContext 固定 48k）"""
-    if not pcm:
-        return b""
-    a = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype=np.int16).astype(np.float32)
-    if ch > 1:
-        a = a[: a.size // ch * ch].reshape(-1, ch).mean(axis=1)
-    if src_sr != TTS_OUT_SR:
-        n = max(1, int(round(a.size * TTS_OUT_SR / float(src_sr))))
-        x = np.linspace(0, a.size - 1, n, dtype=np.float64)
-        a = np.interp(x, np.arange(a.size, dtype=np.float64), a)
-    return a.clip(-32768, 32767).astype(np.int16).tobytes()
-
-
-def _wav_to_pcm(data: bytes) -> tuple[bytes, int, int]:
-    with wave.open(io.BytesIO(data), "rb") as w:
-        ch, width, sr = w.getnchannels(), w.getsampwidth(), w.getframerate()
-        raw = w.readframes(w.getnframes())
-    if width != 2:
-        raise RuntimeError(f"TTS 返回的 WAV 位深为 {width * 8}bit，只支持 16bit（请在控制台把格式设为 wav 或 pcm）")
-    return raw, sr, ch
-
-
 async def tts_stream(text: str, voice, speed: float = 1.0) -> AsyncGenerator[bytes, None]:
-    """文本 → 48kHz int16 单声道 PCM 块。"""
+    """文本 → 48kHz int16 单声道 PCM 块（网关按 sentence 返回裸 PCM 流）。"""
     if not text or not text.strip():
         return
-    sec = settings.section("tts")
-    fmt = str(sec.get("format") or "wav").lower()
     payload = {
-        "model": str(sec.get("model") or "tts-1"),
+        "model": settings.TTS_MODEL,
         "input": text,
-        "voice": str(voice or sec.get("voice") or "alloy"),
-        "response_format": "pcm" if fmt == "pcm" else "wav",
-        "speed": float(speed or sec.get("speed") or 1.0),
+        "voice": str(voice or settings.default_voice()),
+        "response_format": "pcm",
+        "speed": float(speed or 1.0),
     }
     async with _client(timeout=120) as c:
-        r = await c.post(_url(sec, "/audio/speech"), headers=_headers(sec), json=payload)
+        r = await c.post(_url("/audio/speech"), headers=_headers(), json=payload)
         if r.status_code != 200:
             await r.aread()
             raise RuntimeError(f"TTS 服务错误：{_body_error(r)}")
-        raw = r.content
-    if fmt == "pcm":
-        pcm = _resample(raw, int(sec.get("sample_rate") or 24000), 1)
-    else:
-        pcm_raw, sr, ch = _wav_to_pcm(raw)
-        pcm = _resample(pcm_raw, sr, ch)
+        pcm = r.content
     for i in range(0, len(pcm), _CHUNK):
         yield pcm[i: i + _CHUNK]
 
@@ -313,12 +252,11 @@ def cut_sentence(buf: str, min_len: int = 4) -> tuple[str, str]:
 
 async def embed(texts: list[str]) -> np.ndarray:
     """文本 → L2 归一化向量矩阵 (n, dim)"""
-    sec = settings.section("embedding")
     if not texts:
-        return np.zeros((0, int(sec.get("dim") or 0)), dtype=np.float32)
+        return np.zeros((0, int(settings.get("gateway.embedding_dim") or 0)), dtype=np.float32)
     async with _client(timeout=90) as c:
-        r = await c.post(_url(sec, "/embeddings"), headers=_headers(sec),
-                         json={"model": str(sec.get("model") or ""), "input": texts})
+        r = await c.post(_url("/embeddings"), headers=_headers(),
+                         json={"model": settings.EMB_MODEL, "input": texts})
         if r.status_code != 200:
             raise RuntimeError(f"向量服务错误：{_body_error(r)}")
         data = (r.json() or {}).get("data") or []
