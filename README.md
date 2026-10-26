@@ -11,166 +11,122 @@
   <img src="https://img.shields.io/badge/PRs-welcome-e8c88a?style=flat-square" alt="prs">
 </p>
 
-<h3 align="center">记忆不是被检索出来的，是此刻涌现出来的。</h3>
+<p align="center"><b>English</b> · <a href="README.zh-CN.md">中文</a></p>
 
-<p align="center">
-一个把「记忆」当作第一性原理的 AI 心智内核：<br>
-AI 的回答不是从文档切片里拼出来的，而是由它<strong>自己的记忆种子</strong>在习气网络中竞争，<br>
-胜出的「这一念」再说出口。
-</p>
+<h3 align="center">Memory is not retrieved. It emerges.</h3>
 
-<p align="center">
-  <a href="https://dev.nice-ai.cn/alaya/"><img src="https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-LIVE%20DEMO-e8c88a?style=for-the-badge" alt="Live Demo"></a>
-</p>
+Most "AI memory" today is a vector index. Ask again tomorrow and it returns the same top-k chunks —
+or confidently recalls something you never said, because nothing in that index ever gets *revised*.
 
-> **在线 Demo** → <https://dev.nice-ai.cn/alaya/>
->
-> 作者部署的实例，可以先看实况再决定要不要自己跑。登录方式为**手机号 + 短信验证码**（需真实可用手机号）。
->
-> ⚠️ 这是真实运行的实例：你输入的内容会真的写进它的记忆库，也会调用真实模型。
-> **请不要输入个人隐私**。Demo 可能随时调整或关闭，长期使用请本地部署。
+Alaya replaces the index with a small **habit network of memory seeds**. Seeds compete for activation every 200 ms.
+Only the winning thought gets spoken. Unused memories decay. Wrong ones get superseded — and the record of
+*"it used to believe that"* stays. Every conversation slightly rewires the network.
 
----
+It is not a chat product. It is the memory substrate underneath one.
 
-## 三句话说完它是什么
-
-- **不是 RAG，是记忆**：没有"知识库 + 相似度 top-k 塞 prompt"。记忆是种子，检索只是召回，真正决定说什么的是**习气网络的竞争结果**。
-- **不是无状态，是会变的**：每句话都会**熏习**网络——召回即复熏、共现即建边、久不用则半衰。内容永不改，权重天天变。
-- **不是一份记忆，是每个 AI 各有各的**：每个 AI 本体有自己的阿赖耶。同一件事，你有你的第一人称，它有它的第一人称。
-
-<table>
-<tr><td width="50%" valign="top">
-
-**常见方案**
-
-```
-用户提问
-   ↓
-embed(问题)
-   ↓
-向量库 top-k 文档切片
-   ↓
-"根据以下资料回答…" → LLM
-   ↓
-回答（每次都从零开始）
-```
-
-</td><td width="50%" valign="top">
-
-**阿赖耶**
-
-```
-用户说话
-   ↓
-感官种子（临时，还没"记住"）
-   ↓
-习气网络 200ms 一拍地跑
-   ↓
-主念集群胜出（它决定要不要开口）
-   ↓
-召回 · 我识 · 生成 · 出声
-   ↓
-结生（长期种子）→ 熏习（网络变了）
-```
-
-</td></tr>
-</table>
+> **Live demo (中文)** → <https://dev.nice-ai.cn/alaya/>
+> Author-hosted, real instance running real models. Heads-up for non-Chinese visitors:
+> login requires a **Chinese mobile number + SMS code**, so most people outside mainland China cannot get in.
+> Everything you type *is* written into its memory — **please don't enter anything private**.
+> The demo may go away at any time; for real use, run it locally (takes one command, see below).
 
 ---
 
-## 架构
+## What is actually different
+
+| | Typical RAG stack | Alaya |
+|---|---|---|
+| Unit of memory | document chunk + embedding | **seed**: one fact, with time / person / emotion / scene fingerprints |
+| Recall | cosine top-k, then stuff into prompt | three-way fusion (vector / recency / evergreen), then **competition** in the habit network |
+| Who decides to speak | the caller — every turn must answer | the network — only a dominant thought crosses the threshold |
+| Writing | embed once, never changes | **present window → consolidation**: utterances live briefly, then get re-read as a whole and distilled into long-term seeds |
+| Revision | overwrite or append | new seed + `corr` edge + old seed marked `superseded`; content is immutable |
+| Forgetting | none | daily half-life decay + over-recall penalty |
+| Ownership | one global store | **one Ālaya per AI persona** (dual-perspective, first person on both sides) |
+
+The practical difference: ask it about the same event after 50 mentions and the memory does not get louder —
+recall reinforcement saturates. Tell it "no, that's not what happened" and the old seed is superseded instead of
+quietly living next to the new one.
+
+---
+
+## Architecture
 
 <p align="center">
   <img src="assets/architecture.svg" alt="architecture" width="100%">
 </p>
 
-一次交互的完整闭环，全部落在 `server/` 这几个文件里：
-
-| 环节 | 代码 | 做什么 |
+| Stage | File | What it does |
 |---|---|---|
-| 感知 | `index.py` `_sense_from_audio/_sense_from_text` | 16k PCM / 文字 / 画面 → 感官种子 |
-| 习气网络 | `manas.py` `step/tick` | 200ms 一拍：邻域传导、侧抑制、自然衰减、阈值分层 |
-| 主念涌现 | `manas.py` `conceive` | 相对统治力胜出 → 「受·想·思」收摄成当下这一念 |
-| 召回 | `retrieval.py` `recall` | 向量反射 + 时间近因 + 高权重常青，三路融合后沿边整族浮起 |
-| 我识 | `selfmodel.py` | core 本体我 / relation 关系我 / mood 当下我，三层分开存 |
-| 表达 | `llm.py` + `index.py` `_run_turn` | 外部 LLM 流式 → 分句 → TTS 流式，边生成边合成边下发 |
-| 结生 | `dualview.py` | 一段对话一次看全 → 抽出中性事实 → 确定性映射成两个视角的种子 |
-| 熏习 | `xixi.py` | 共现建边、关联建边、读即写、每日半衰（含过度召回惩罚） |
+| Perceive | `index.py` `_sense_from_audio/_sense_from_text` | 16 kHz PCM / text / image → sensory seed |
+| Habit network | `manas.py` `step/tick` | 200 ms beat: spread, lateral inhibition, decay, threshold layering |
+| Emergence | `manas.py` `conceive` | the dominant cluster is condensed into "this thought" (vedanā / saṃjñā / cetanā) |
+| Recall | `retrieval.py` `recall` | vector + recency + evergreen, fused, then expanded along `co/corr` edges |
+| Self-model | `selfmodel.py` | core / relation / mood — three layers, stored separately |
+| Express | `llm.py` + `_run_turn` | external LLM stream → sentence split → TTS stream, 48 kHz PCM out |
+| Consolidate | `dualview.py` | one dialogue read as a whole → neutral facts → two first-person seeds |
+| Perfume | `xixi.py` | co-occurrence edges, association edges, read-to-write reinforcement, daily decay |
 
 ---
 
-## 核心机制
+## The loop, in six ideas
 
-### 1. 种子，而不是文档切片
-
-一颗种子 = 一句话一条事实，带五维指纹（语义 / 时间 / 人物 / 情绪 / 场景）+ 来源与证据。
+**1. Seeds, not chunks.** One fact per row, five-dimension fingerprint, plus evidence and provenance.
 
 ```sql
 alaya_seeds(
-  seed_type, seed_text, raw_text,        -- 语义（不可变）
-  owner_ai_id, peer_ai_id, subject,      -- 归属：谁记得、关于谁
-  seed_date, time_fuzzy,                 -- 时间（相对词在写入时就换算成绝对日期）
-  person_id, scene, life_stage,          -- 人物 / 场景 / 人生阶段
-  emotion_tone_id, emotion_word,         -- 情绪
-  confidence, weight, recall_count,      -- 权重三件套（熏习唯一作用面）
-  state, superseded_by, episode_id,      -- 修正链 + 事件束
-  expire_at                              -- 临时记忆的生命周期
+  seed_type, seed_text, raw_text,        -- semantics (immutable)
+  owner_ai_id, peer_ai_id, subject,      -- whose memory, about whom
+  seed_date, time_fuzzy,                 -- relative dates are resolved at write time
+  person_id, scene, life_stage,          -- person / scene / life phase
+  emotion_tone_id, emotion_word,         -- emotion
+  confidence, weight, recall_count,      -- the only fields perfuming may touch
+  state, superseded_by, episode_id,      -- revision chain + event bundle
+  expire_at                              -- lifetime of a transient memory
 )
 ```
 
-**铁律**：种子内容不可变。要改？写新种子 + `corr` 边 + 旧种子 `state=superseded`。这样"它曾经怎么以为"永远可追溯。
+**2. Present window → consolidation.** What you just said is *not* memory yet. It sits in a short-lived window
+(`state=temp`, excluded from the network, excluded from vector search, 30 min TTL), and only after the segment
+goes quiet does it get read as a whole and distilled into long-term seeds.
 
-### 2. 现量 → 结生：两段节律
+Why: extracting turn-by-turn sees one turn at a time. Tell the same story three times and you get three
+strangers that never recognise each other. Reading the segment as a whole is what makes
+"one event → one complete fact" actually hold.
 
-人不是边听边记笔记的。说完的话先在**现量窗口**里活一会儿（`state=temp`，不进长期网络、不建向量），
-等这段话说完了、静下来了，才**一次看全**抽成长期记忆。
+**3. Dual-perspective consolidation.** From one neutral fact, two seeds are derived deterministically:
+the user's persona gets it in the first person, the AI persona gets it in the first person, with opposite
+ownership. Two seeds — never the same text copied twice.
 
-> 为什么必须这样：逐轮抽取时模型只看到一轮，同一件事被讲三遍就抽出三条互不相识的碎片，
-> 回忆时拼不出全貌。一次看全，"同一件事只出一条完整事实"才真正落得下去。
+**4. Perfuming (熏习): five operators, weights only.**
 
-### 3. 双视角结生
-
-同一件事，抽出**视角无关的中性事实**，再用确定性映射生成两份：
-
-- 用户本体：「我」的经历 → `subject=self`，第一人称
-- AI 本体：「我」的经历 → `subject=self`，第一人称（归属相反）
-
-绝不允许把同一段文本原样写进两份——那是复制，不是双视角。
-
-### 4. 熏习：五类算子，只动权重
-
-| 算子 | 触发 | 效果 |
+| Operator | Trigger | Effect |
 |---|---|---|
-| `strengthen_cooccurrence` | 同轮写入多颗种子 | 两两建边 0.3，已存在则 +0.02（封顶 1.0） |
-| `associate_seeds` | 新种子入网 | 与语义近邻（≥0.55，top5）建边，并给邻居共同加权 |
-| `reinforce_on_recall` | 被召回 | `0.1 × 相关度 / (1 + recall_count/4)`——第一次想起最鲜明，第 50 次几乎不再加深 |
-| `decay_half_life` | 每日 04:00 | `weight = 0.5^(未唤醒天数/30) / (1 + recall_count/30)` |
-| `supersede` | 被纠正 | 旧种子降权 0.5 + 标记 superseded，修正链可追溯 |
+| `strengthen_cooccurrence` | seeds written in the same turn | pairwise edge 0.3, +0.02 when it already exists (cap 1.0) |
+| `associate_seeds` | a new seed enters | edges to semantic neighbours (≥0.55, top 5) + shared reinforcement |
+| `reinforce_on_recall` | seed recalled | `0.1 × relevance / (1 + recall_count/4)` — first recall is vivid, the 50th barely adds |
+| `decay_half_life` | daily 04:00 | `weight = 0.5^(days_since_recall/30) / (1 + recall_count/30)` |
+| `supersede` | user corrects it | old seed ×0.5 weight, marked `superseded`, chain preserved |
 
-`skill` 类种子（"一次只问一个问题"这类对话基本能力）**豁免半衰**——通识能力不该因为久未使用而淡出。
+`skill` seeds (conversational basics like "ask one question at a time") are **exempt from decay** — a general
+ability should not fade because it went unused.
 
-### 5. 阈值是它自己的历史分位，不是常数
-
-意识候选的判据不是拍脑袋写的 `if I > 0.7`，而是：
+**5. Thresholds are quantiles of its own history, not constants.**
 
 ```
-θ = Quantile_0.8(最近 400 拍自己的意象强度)
+θ = Quantile_0.8(own imagery intensity over the last 400 ticks)
 ```
 
-经历越多，阈值越贴合它自己的分布：变强则门抬高，变弱则门降低。
-分布还没成形（样本不足）时，一切成形的意象都是候选——这是 q 分位在样本不足时的数学正解，不是兜底。
+The more it experiences, the better the gate fits its own distribution. When the distribution has not formed yet,
+every formed image is a candidate — that is the correct behaviour of a q-quantile with too few samples, not a fallback.
 
-### 6. 忆点星光：记忆是可以被"补全"的
-
-记忆不是独白。系统把种子按人物 / 事件束铺成星图（`/amnesia/`），
-可以生成一条链接发给当事人：**"这段记忆里还有你，要不要一起补上另一半？"**
-
-亲友补的那份不是写到别处，而是写进**同一个事件束**（`episode_id`）——两份记忆在同一个盆地相遇。
-星图上那颗星，从此从暗变亮。
+**6. Star map: memory can be completed by someone else.** Seeds are laid out by person / event bundle.
+You can send a link to the other person in the story: *"you're in this memory — want to fill in the half I don't have?"*
+Their contribution is written into the **same event bundle**, not a separate store. That star lights up.
 
 ---
 
-## 快速开始
+## Quick start
 
 ```bash
 git clone https://github.com/imcosy/alaya_v2.git
@@ -178,35 +134,37 @@ cd alaya_v2
 ./run.sh
 ```
 
-首次运行会建 `.venv`、复制 `config.example.json` → `config.json`、建好 `data/alaya.db`。
-浏览器打开 `http://127.0.0.1:9890/`，**注册一个本地账号就能用**（不需要短信、不需要第三方登录）。
+`run.sh` creates a venv, copies `config.example.json` → `config.json`, and creates `data/alaya.db`.
+Open `http://127.0.0.1:9890/` and register a local account (no SMS, no OAuth).
 
-> 没填 key 也能启动，只是语音和回复不可用；顶部状态会显示"未配置"。
+It starts fine without any API key — voice and replies simply won't work until you fill them in.
 
-### 需要准备四类接口（都是 OpenAI 兼容）
+### Four OpenAI-compatible endpoints
 
-| 能力 | 端点 | 备注 |
+| Capability | Endpoint | Notes |
 |---|---|---|
-| LLM | `POST {base}/chat/completions` | 必须支持 `stream: true` |
-| ASR | `POST {base}/audio/transcriptions` | 上传 WAV，返回 `{"text": "..."}` |
-| TTS | `POST {base}/audio/speech` | 返回 `wav` 或裸 `pcm`（16bit 单声道） |
-| Embedding | `POST {base}/embeddings` | 记忆召回的唯一语义坐标 |
+| LLM | `POST {base}/chat/completions` | must support `stream: true` |
+| ASR | `POST {base}/audio/transcriptions` | upload WAV, expect `{"text": ...}` |
+| TTS | `POST {base}/audio/speech` | return `wav` or raw `pcm` (16-bit mono) |
+| Embeddings | `POST {base}/embeddings` | the only semantic coordinate for recall |
 
-**最低配置**：LLM + Embedding 就能文字对话。补齐 ASR/TTS 才有语音。
+**Minimum to chat:** LLM + Embeddings. Add ASR/TTS for voice.
 
-> OpenAI / DeepSeek / 阿里百炼 / 硅基流动 / 火山方舟…… 只要提供上述端点，填 `base_url` 即可。
-> 换 Embedding 模型会自动丢弃旧向量并全量重建，种子文本不受影响。
+Works with OpenAI, DeepSeek, Alibaba Bailian, SiliconFlow, Volcengine, or any local server exposing the same
+endpoints (vLLM / Ollama / Xinference / FastChat) — just point `base_url` at it.
+
+Switching the embedding model is detected automatically: old vectors are discarded and rebuilt from seed text.
 
 ---
 
-## 配置
+## Configuration
 
-两种方式等价，改完**立即生效**，不用重启：
+Two equivalent ways, both effective immediately (no restart):
 
-1. **页面里改**：用户图标 → 我的资料 → ⚙️ 模型设置
-2. **改文件**：`config.json`（模板见 [`config.example.json`](config.example.json)）
+1. **In the UI**: user icon → profile → ⚙️ model settings
+2. **`config.json`** (template: [`config.example.json`](config.example.json))
 
-也可以用环境变量（容器部署推荐，优先级最高）：
+Environment variables win over the file:
 
 ```bash
 ALAYA_PORT=9890
@@ -216,153 +174,131 @@ ALAYA_TTS_BASE=...  ALAYA_TTS_KEY=...  ALAYA_TTS_MODEL=...  ALAYA_TTS_VOICE=...
 ALAYA_EMB_BASE=...  ALAYA_EMB_KEY=...  ALAYA_EMB_MODEL=...
 ```
 
-### 音色与情绪换声
-
-音色就是 TTS 厂商的音色名（不内置克隆），在控制台配一份清单：
-
-```json
-"tts": {
-  "voices": [
-    { "id": "nova",    "name": "Nova 女声",    "emoji": "🌸" },
-    { "id": "shimmer", "name": "Shimmer 女声", "emoji": "✨" }
-  ],
-  "emotion_voices": { "伤心": "shimmer", "兴奋": "nova", "低落": "alloy" }
-}
-```
-
-### 声纹（可选）
-
-外部 ASR 厂商都不返回 speaker embedding，所以**默认关闭**：单人使用时"麦克风前的人 = 当前登录用户"。
-
-要启用"听声识人"，自建一个声纹服务：
-
-```
-POST {speaker.base_url}/embedding     (multipart: audio=@a.wav)
-→ {"embedding": [0.01, -0.23, ...]}    # 192 维，余弦比对
-```
-
-然后在模型设置里打开 `speaker.enabled`。参考实现：CAM++ / 3D-Speaker。
+**Voices** are just TTS vendor voice names (no built-in cloning) — declare a list, pick one per persona.
+**Emotion → voice** mapping makes it switch voice when the reply opens with an emotion tag.
+**Speaker identification** is optional: no ASR vendor returns speaker embeddings, so it's off by default
+(single user = the logged-in account). Plug your own `POST {base}/embedding` service to enable it.
 
 ---
 
-## 一些真实的数字
+## Some real numbers
 
-这些都是代码里的默认值，不是宣传语：
+Default values in the code, not marketing copy:
 
-| 项 | 值 | 位置 |
+| Item | Value | Where |
 |---|---|---|
-| 习气网络节拍 | 200 ms | `manas.py` |
-| 召回向量阈值 | 0.42 | `retrieval.py` |
-| 关联建边阈值 | 0.55（top 5） | `xixi.py` |
-| "同一件事"判定 | 0.88 / 相关 0.72 | `retrieval.py` |
-| 半衰期 | 30 天 | `xixi.py` |
-| 读即写饱和 | `1/(1+recall/4)` | `xixi.py` |
-| 结生时机 | 静默 90s / 满载 40 条 / 突显 3 条高唤醒 | `working.py` |
-| 临时记忆寿命 | 30 分钟 | `working.py` |
-| TTS 输出 | 48 kHz · int16 · 单声道 | `llm.py` |
-| 种子表 | 1 张，27 列 | `schema.sql` |
+| Habit network beat | 200 ms | `manas.py` |
+| Recall vector threshold | 0.42 | `retrieval.py` |
+| Association edge threshold | 0.55 (top 5) | `xixi.py` |
+| "Same event" / "related" | 0.88 / 0.72 | `retrieval.py` |
+| Half-life | 30 days | `xixi.py` |
+| Recall saturation | `1/(1+recall/4)` | `xixi.py` |
+| Consolidation trigger | 90 s idle / 40 items / 3 high-arousal | `working.py` |
+| Transient memory TTL | 30 min | `working.py` |
+| TTS output | 48 kHz · int16 · mono | `llm.py` |
+| Seed table | 1 table, 27 columns | `schema.sql` |
 
 ---
 
-## 接口
+## API
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/auth/register` `/login` `/logout` | 本地账号 |
-| GET | `/api/me` | 当前用户 |
-| GET/POST | `/api/config` | 读写模型设置（key 掩码回显） |
-| GET | `/api/ais` | 可对话的 AI 本体 |
-| **WS** | `/ws` | 实时通道：`init / start / stop / chat / material / interrupt / voice / manas` |
-| POST | `/api/chat` | 文本对话（同步，联调用） |
-| POST | `/api/import` | 文字 / 文件 / 照片 → 记忆种子 |
-| GET | `/api/seeds` | 种子库 |
-| GET | `/api/working` | 现量窗口（尚未结生的临时记忆） |
-| GET | `/api/selfmodel` | 我识三层 |
-| GET | `/api/network` | 习气网络（概念 + 边 + 类型统计） |
-| GET | `/api/history` | 对话流水 |
-| GET/POST | `/api/amnesia/*` | 忆点星光：星图 / 寻忆邀请 / 转发 / 补星 |
+| POST | `/api/auth/register` `/login` `/logout` | local accounts |
+| GET | `/api/me` | current user |
+| GET/POST | `/api/config` | read / write model settings (keys masked) |
+| GET | `/api/ais` | personas you can talk to |
+| **WS** | `/ws` | `init / start / stop / chat / material / interrupt / voice / manas` |
+| POST | `/api/chat` | synchronous text turn (for testing) |
+| POST | `/api/import` | text / file / photo → memory seeds |
+| GET | `/api/seeds` | seed store |
+| GET | `/api/working` | present window (not yet consolidated) |
+| GET | `/api/selfmodel` | the three self-model layers |
+| GET | `/api/network` | habit network (concepts, edges, type stats) |
+| GET/POST | `/api/amnesia/*` | star map: galaxy / invites / forward / add |
 
-WebSocket 二进制帧是 **48 kHz / int16 / 单声道 PCM**，前端用 `AudioContext({sampleRate: 48000})` 直接播。
+WebSocket binary frames are **48 kHz / int16 / mono PCM**, played directly with `AudioContext({sampleRate: 48000})`.
 
 ---
 
-## 目录
+## Design notes, trade-offs, known limitations
+
+Honest list — these are choices, not oversights:
+
+- **ASR is whole-utterance, not streaming.** Most OpenAI-compatible vendors only expose file upload. TTS is still
+  streamed sentence by sentence, so time-to-first-audio stays low. A streaming ASR adapter is a natural PR.
+- **SQLite is the store.** WAL + one writer + per-thread connections. Great for a personal instance or a small
+  server; not a multi-tenant cluster.
+- **The habit network is in-memory per persona.** Ticks are O(nodes × edges). Tens of thousands of seeds per
+  persona are fine; millions are not, and would need sharding.
+- **Speaker identification needs a sidecar.** Vendors don't return embeddings. Off by default.
+- **Auth is deliberately minimal.** Local accounts, PBKDF2, bearer tokens. No OAuth, no roles, no email
+  verification. If you expose it publicly, put it behind a reverse proxy with its own auth.
+- **Text is the internal medium for extraction; sound is not.** Audio goes to ASR, seeds are text + embeddings.
+  A fully pre-linguistic path (raw audio tokens as memory) is explored in a separate v3 prototype, not here.
+- **No built-in evaluation suite.** The numbers above are measured thresholds from real usage, not benchmark scores.
+
+---
+
+## Repository layout
 
 ```
 alaya_v2/
-├─ run.sh                  一键启动
-├─ config.example.json     配置模板
+├─ run.sh                  one-shot launcher
+├─ config.example.json     config template
 ├─ server/
-│  ├─ index.py             FastAPI 主服务（REST + WS + 静态站点）
-│  ├─ settings.py          配置中心（config.json + 环境变量）
-│  ├─ db.py                SQLite 基座（MySQL 写法 → SQLite 方言的唯一翻译层）
-│  ├─ schema.sql           全部表结构
-│  ├─ llm.py               外部 LLM / ASR / TTS / Embedding / 视觉
-│  ├─ auth.py              本地账号（PBKDF2 + token）
-│  ├─ manas.py             末那识心智涌现中枢
-│  ├─ retrieval.py         三路召回 + 向量索引
-│  ├─ seeds.py             种子容器
-│  ├─ xixi.py              熏习算子
-│  ├─ selfmodel.py         我识三层
-│  ├─ dualview.py          双视角抽取
-│  ├─ extract.py           种子抽取（六维指纹）
-│  ├─ working.py           现量窗口 + 结生
-│  ├─ organize.py          概念层凝聚
-│  ├─ guide.py             公共本体的风格养成
-│  ├─ profile.py           音色清单 / 形象照
-│  ├─ amnesia.py           忆点星光
-│  └─ ocean.py · life_stages.py
-├─ public/                 控制台 + 忆点星光 + 浏览器录音
-└─ data/                   运行时生成：alaya.db / vectors.npz / faces/
+│  ├─ index.py             FastAPI app (REST + WS + static)
+│  ├─ settings.py          config center (file + env)
+│  ├─ db.py                SQLite base (the only dialect translation layer)
+│  ├─ schema.sql           all tables
+│  ├─ llm.py               external LLM / ASR / TTS / embeddings / vision
+│  ├─ auth.py              local accounts (PBKDF2 + tokens)
+│  ├─ manas.py             habit network / dominant-thought emergence
+│  ├─ retrieval.py         three-way recall + vector index
+│  ├─ seeds.py             seed container
+│  ├─ xixi.py              perfuming operators
+│  ├─ selfmodel.py         three self-model layers
+│  ├─ dualview.py          dual-perspective extraction
+│  ├─ extract.py           fingerprint extraction
+│  ├─ working.py           present window + consolidation
+│  ├─ organize.py          concept-layer condensation
+│  ├─ guide.py             public persona's style formation
+│  ├─ profile.py           voices / self-portraits
+│  └─ amnesia.py           star map
+├─ public/                 console + star map + browser recording
+├─ assets/                 banner & architecture (SVG)
+└─ data/                   runtime: alaya.db / vectors.npz / faces/
 ```
 
 ---
 
-## 常见问题
+## FAQ
 
-**Q：为什么不直接用向量数据库？**
-A：因为"想起什么"和"说什么"是两件事。向量库只回答前者，而且只回答一次。
-阿赖耶要的是：记忆之间会互相激活、会互相抑制、会被反复熏习而改变权重——这些是图上的动力学，不是 top-k。
+**Why not just use a vector database?**
+Because "what comes to mind" and "what to say" are different problems. A vector DB answers the first one, once.
+Alaya needs memories that excite and inhibit each other, and that change weight through use — that's dynamics
+on a graph, not top-k.
 
-**Q：必须用外部 API 吗？能接本地模型吗？**
-A：能。任何兼容 OpenAI 协议的本地服务（vLLM / Ollama 的 OpenAI 端点 / Xinference / FastChat）都可以，
-把 `base_url` 指到本地即可。
+**Can I run it fully locally?**
+Yes. Point `base_url` at vLLM / Ollama / Xinference / FastChat. Nothing in the engine requires a specific vendor.
 
-**Q：数据在哪儿？会上传吗？**
-A：全部在 `data/alaya.db`（单文件）。但**对话内容会发送给你配置的服务商**，请自行评估隐私边界。
+**Where is my data?**
+`data/alaya.db`, one file, on your machine. But your conversation text **is sent to whichever providers you
+configure** — judge that for yourself.
 
-**Q：能换 Embedding 模型吗？**
-A：能。程序会检测维度变化，自动清空旧索引并全量重建。想手动重建：停服 → 删 `data/vectors.npz` → 重启。
+**Can I change the embedding model?**
+Yes. Dimension changes are detected; old vectors are dropped and rebuilt from seed text automatically.
+Manual rebuild: stop, delete `data/vectors.npz`, start.
 
-**Q：这个项目和"AI 伴侣"有什么区别？**
-A：它不绑定任何前端形态。它只做一件事：让一个 AI 拥有**会随时间变化的、属于它自己的记忆**。
-控制台只是它的观察窗。
-
-
----
-
-## English TL;DR
-
-**Alaya** is a memory-native cognitive engine. Instead of retrieving document chunks and stuffing them into a prompt,
-it keeps a graph of **memory seeds** that continuously compete; only the winning "thought" gets spoken.
-
-- **Seeds, not chunks** — one fact per seed, with time / person / emotion / scene fingerprints. Content is immutable; corrections create a new seed and a `corr` edge.
-- **Emergence, not retrieval** — a 200 ms habit-network loop (spread, inhibition, decay) decides *whether to speak*, not just *what to say*.
-- **Consolidation, not logging** — utterances live in a short-lived "present" window, then get re-read as a whole and distilled into long-term seeds from two first-person perspectives.
-- **Perfuming, not caching** — recall reinforces, co-occurrence builds edges, unused memories decay on a 30-day half-life. Weights change every day; content never does.
-- **Star map** — memories are laid out by person/event, and you can invite the other person in the story to fill in the half you don't remember.
-
-Single-file SQLite. Any OpenAI-compatible endpoint for LLM / ASR / TTS / embeddings. Apache-2.0.
-
-```bash
-git clone https://github.com/imcosy/alaya_v2.git && cd alaya_v2 && ./run.sh
-```
+**How is this different from "AI companion" projects?**
+It doesn't ship a persona or a frontend. It ships the thing underneath: a memory that belongs to one AI and
+changes over time. The console is just an observation window.
 
 ---
 
 ## License
 
-[Apache-2.0](LICENSE) · 欢迎 Issue / PR。
+[Apache-2.0](LICENSE). Issues and PRs welcome.
 
 <p align="center">
   <sub>ALAYA · 阿赖耶 — 一切种子如瀑流</sub>
