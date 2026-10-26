@@ -111,14 +111,20 @@ ownership. Two seeds — never the same text copied twice.
 `skill` seeds (conversational basics like "ask one question at a time") are **exempt from decay** — a general
 ability should not fade because it went unused.
 
-**5. Thresholds are quantiles of its own history, not constants.**
+**5. No absolute threshold — dominance is relative.**
+
+There is no `if intensity > 0.7` anywhere. A thought earns the right to be spoken by being **42% ahead of
+the runner-up** in the network, not by crossing a fixed number:
 
 ```
-θ = Quantile_0.8(own imagery intensity over the last 400 ticks)
+dominance = (act[lead] - act[second]) / act[lead]
+dominance ≥ 0.42  → speak          (DOM_MANIFEST)
+dominance ≥ 0.18  → conscious      (thought has formed, hasn't taken over)
 ```
 
-The more it experiences, the better the gate fits its own distribution. When the distribution has not formed yet,
-every formed image is a candidate — that is the correct behaviour of a q-quantile with too few samples, not a fallback.
+Why relative: different personas have completely different activation ranges — one is talkative, one is terse;
+the same persona differs between midnight and noon. An absolute gate would either make one persona mute or
+make another interrupt constantly. Relative dominance is scale-free, so the same two numbers hold for all of them.
 
 **6. Star map: memory can be completed by someone else.** Seeds are laid out by person / event bundle.
 You can send a link to the other person in the story: *"you're in this memory — want to fill in the half I don't have?"*
