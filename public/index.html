@@ -247,13 +247,12 @@
   @keyframes lgLogo { 0%,100% { filter:drop-shadow(0 0 5px rgba(232,200,138,.35)); transform:scale(1); } 50% { filter:drop-shadow(0 0 18px rgba(232,200,138,.8)); transform:scale(1.07); } }
   .lgtitle { text-align:center; font-size:18px; color:#e8c88a; font-weight:600; margin:8px 0 4px; letter-spacing:2px; }
   .lgsub { text-align:center; font-size:12px; color:#8a92a3; margin-bottom:18px; }
-  #lgPhone, #lgCode { width:100%; background:rgba(13,16,24,.72); border:1px solid rgba(184,146,90,.30); border-radius:12px; padding:12px 14px; font-size:15px; color:#e8e6e3; outline:none; }
-  #lgPhone:focus, #lgCode:focus { border-color:#b8925a; box-shadow:0 0 0 3px rgba(184,146,90,.14); }
-  #lgPhone { margin-bottom:10px; }
-  .lgrow { display:flex; gap:8px; margin-bottom:14px; }
-  .lgrow input { flex:1; min-width:0; }
-  #lgSend { flex:none; background:#2b2416; color:#e8c88a; border:1px solid rgba(184,146,90,.45); border-radius:12px; padding:0 14px; font-size:13px; cursor:pointer; }
-  #lgSend:disabled, #lgGo:disabled { opacity:.5; }
+  #lgUser, #lgPass, #lgNick { display:block; width:100%; background:rgba(13,16,24,.72); border:1px solid rgba(184,146,90,.30); border-radius:12px; padding:12px 14px; font-size:15px; color:#e8e6e3; outline:none; font-family:inherit; margin-bottom:12px; }
+  #lgUser:focus, #lgPass:focus, #lgNick:focus { border-color:#b8925a; box-shadow:0 0 0 3px rgba(184,146,90,.14); }
+  #lgUser::placeholder, #lgPass::placeholder, #lgNick::placeholder { color:#6e7686; }
+  #lgGo:disabled { opacity:.5; }
+  .lgswitch { text-align:center; font-size:12.5px; color:#8a92a3; margin-top:14px; }
+  .lgswitch a { color:#c9a263; cursor:pointer; margin-left:2px; }
   #lgGo { width:100%; background:linear-gradient(135deg,#c9a263,#9a7440); color:#16120a; font-weight:700; font-size:15px; border:none; border-radius:12px; padding:13px; cursor:pointer; box-shadow:0 8px 26px rgba(184,146,90,.30); }
   #lgErr { color:#d97b7b; font-size:12.5px; min-height:18px; margin-top:10px; text-align:center; line-height:1.5; }
   /* 手机端：登录窗改底部弹窗 */
