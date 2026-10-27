@@ -198,6 +198,35 @@ def _spawn_bg(coro) -> asyncio.Task:
     return t
 
 
+def _spawn_backfill():
+    """向量索引回填放后台跑。
+
+    它要逐颗调 embedding；接口没配 Key、网络抖动都会抛异常。原来放在 WS init 里
+    await，一旦抛错 socket 直接断开、ready 永远发不出去——用户看到的就是
+    「连接中，稍候再试」。回填失败只该是"暂时没有向量召回"，绝不能挡住会话。
+    """
+    async def _run():
+        try:
+            await retrieval.load_vectors_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("[retrieval] 后台向量回填失败（不影响对话）: %s", e)
+    return asyncio.create_task(_run())
+
+
+async def _turn_guard(session: Session, ws: WebSocket, sense: str, scene: str, proactive: bool):
+    """表达轮的外壳：把异常变成一句能看见的提示，而不是"思考中"永远不落地。"""
+    try:
+        await _run_turn(session, ws, sense, scene=scene, proactive=proactive)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        log.error("[turn] 表达失败: %s", e, exc_info=True)
+        with contextlib.suppress(Exception):
+            await ws.send_json({"type": "notice", "text": f"这一轮没说成：{str(e)[:180]}"})
+
+
 async def _cancel_turn(session: Session):
     """打断当前**表达**（生成+TTS），并等待其真正退出（防新旧轮消息交错）。
 
@@ -1119,7 +1148,7 @@ async def ws_converse(ws: WebSocket):
                         "你只握着这段往事的自己那一半，另一半得靠对方讲给你听。"
                         + st_note +
                         "多听多问细节（时间/地点/当时情形），真诚表达记忆被一点点补全的感受；绝不编造记忆里没有的细节。")
-                    await retrieval.load_vectors_once()
+                    _spawn_backfill()
                     await ws.send_json({"type": "ready", "ai_name": session.ai_name, "voice": session.voice,
                                         "mode": "persona", "owner_name": session.owner_name})
                     continue
@@ -1133,7 +1162,7 @@ async def ws_converse(ws: WebSocket):
                     await ws.send_json({"type": "error", "message": "无权访问该AI本体", "code": "auth"})
                     await ws.close()
                     continue
-                await retrieval.load_vectors_once()
+                _spawn_backfill()
                 rows = await db.pool().query(
                     "SELECT id, name, voice_id, user_id FROM xd_ais WHERE id=%s", [session.chat_ai_id])
                 if not rows:
@@ -1366,8 +1395,7 @@ async def _manas_attach(session, ws: WebSocket):
                 session.pending_sense = ""
                 session.pending_scene = ""
                 session.turn_task = asyncio.create_task(
-                    _run_turn(session, ws, sense, scene=scene,
-                              proactive=(expr.get("source") != "speech")))
+                    _turn_guard(session, ws, sense, scene, expr.get("source") != "speech"))
             # 结生（系统巩固）：静默 / 满载 / 突显门控三种情形，见 working.should_condense。
             # ① 每 50 拍（≈10 秒）查一次——窗口的边界是秒级的，不必每拍算；
             # ② 会话空闲时才动手（正在说话/正在生成时不打断）；
@@ -1433,6 +1461,8 @@ async def _sense_from_text(session: Session, ws: WebSocket, text_in: str, scene:
         raise
     except Exception as e:
         log.error("[sense] 文字接入失败: %s", e, exc_info=True)
+        with contextlib.suppress(Exception):
+            await ws.send_json({"type": "notice", "text": f"这句没能处理：{str(e)[:180]}"})
 
 
 async def _sense_material(session: Session, ws: WebSocket, kind: str, name: str, text: str):
@@ -1563,6 +1593,9 @@ async def _sense_from_audio(session: Session, ws: WebSocket, audio: bytes, frame
         raise
     except Exception as e:
         log.error("[sense] 语音接入失败: %s", e, exc_info=True)
+        # 必须让用户看见原因：接口没配 Key / 服务不可用时，界面上不能只剩「思考中」。
+        with contextlib.suppress(Exception):
+            await ws.send_json({"type": "notice", "text": f"语音处理失败：{str(e)[:180]}"})
 
 
 async def _ack_from_audio(session: Session, ws: WebSocket, audio: bytes):
@@ -2210,7 +2243,7 @@ async def api_chat(body: dict, user: dict = Depends(auth.get_current_user)):
     if not text_in:
         text_in = "（发来一张照片）"
     now_text = f"{text_in}\n（此刻我看到的画面：{scene}）" if scene else text_in
-    await retrieval.load_vectors_once()
+    _spawn_backfill()
     system_prompt, recall = await _build_context(
         owner, peer, now_text, speaker_name=speaker_name, mode=mode,
         ai_name=chat_name, owner_name=owner_name,

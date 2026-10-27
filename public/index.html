@@ -271,17 +271,6 @@
   .vbtn { height:32px; border-radius:16px; background:#232837; border:none; color:#9aa0ad; font-size:13px; cursor:pointer; padding:0 10px; min-width:32px; }
   .vbtn.red { background:#3a2020; color:#e08c8c; }
   .vbtn.confirm { background:#8a3a3a; color:#ffd9d9; }
-  /* ── 波形编辑器 ── */
-  .waveform-editor { background:#131722; border:1px solid #2a2e3a; border-radius:12px; overflow:hidden; margin-top:10px; }
-  .waveform-editor-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid #232837; gap:8px; }
-  .waveform-editor-title { font-size:13px; font-weight:600; color:#e8c88a; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .waveform-canvas-wrap { padding:10px; }
-  .waveform-canvas { width:100%; height:120px; border-radius:8px; background:rgba(0,0,0,.3); touch-action:none; cursor:crosshair; display:block; }
-  .waveform-time { text-align:center; font-size:12px; color:#8a92a3; margin-top:4px; font-variant-numeric:tabular-nums; }
-  .waveform-controls, .waveform-toolbar { display:flex; gap:8px; padding:8px 10px; flex-wrap:wrap; justify-content:center; border-top:1px solid #232837; }
-  .wbtn { background:#232837; color:#c8cdd8; border:1px solid #2a2e3a; border-radius:9px; padding:7px 12px; font-size:12.5px; cursor:pointer; }
-  .wbtn.primary { background:#2b2416; color:#e8c88a; border-color:rgba(184,146,90,.45); }
-  .wbtn.back { background:transparent; border:none; color:#7a8194; flex:none; }
   /* ── 我的形象 ── */
   .faceup { text-align:center; border:1.5px dashed rgba(184,146,90,.5); color:#e8c88a; border-radius:12px; padding:14px; font-size:13.5px; cursor:pointer; margin-bottom:12px; }
   .faceup:active { transform:scale(.98); }
@@ -468,6 +457,9 @@ let curAiBubble = null, curAiText = '', curAiProactive = false, seedTypeFilter =
 const API_BASE = location.pathname.replace(/[^/]*$/, '');
 /* ── 登录鉴权（ME=当前登录用户；全部请求带 X-User-Id/X-Token） ── */
 let ME = null, authFail = false;
+// 统一接口是否已配好 Key（来自 /api/status 的 configured.gateway）。
+// 没配 Key 时对话/语音/向量全不可用，录音前必须先引导用户去申请。
+let gwReady = false;
 function saveMe() { localStorage.setItem('alaya_uid', ME.id); localStorage.setItem('alaya_token', ME.token); }
 function clearMe() { ME = null; localStorage.removeItem('alaya_uid'); localStorage.removeItem('alaya_token'); }
 function showLogin() { $('loginMask').style.display = 'flex'; }
@@ -533,6 +525,7 @@ $('lgGo').onclick = async () => {
       $('loginMask').style.display = 'none';
       lgErr('');
       loadAis();
+      api('/api/status').then(s => { gwReady = !!(s.configured && s.configured.gateway); }).catch(() => {});
     } else lgErr(d.detail || d.message || (lgMode === 'register' ? '注册失败' : '登录失败'));
   } catch (e) { lgErr(e.message || '操作失败'); }
   $('lgGo').disabled = false;
@@ -555,7 +548,10 @@ function toast(t) {
   d.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(20,22,30,.88);color:#e8e6e3;padding:12px 22px;border-radius:12px;font-size:14px;z-index:300;';
   document.body.appendChild(d); setTimeout(() => d.remove(), 1800);
 }
-function esc(s) { const d = el('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 /* ── 右栏页签切换（种子库 / 我识 / 熏习） ── */
 $('ctabs').addEventListener('click', e => {
@@ -733,8 +729,11 @@ async function openConfigSheet() {
     try {
       const r = await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch) });
-      if (r.error || r.detail) toast(r.error || r.detail);
-      else toast('✓ 已保存，下一句话立即使用新配置');
+      if (r.error || r.detail) { toast(r.error || r.detail); }
+      else {
+        gwReady = !!(r.configured && r.configured.gateway);
+        toast(gwReady ? '✓ 已保存，现在可以开始对话了' : '✓ 已保存');
+      }
     } catch (e) { toast('保存失败：' + e.message); }
     save.disabled = false;
   };
@@ -983,6 +982,7 @@ async function loadSelf() {
 /* ── 熏习日志 ── */
 async function loadXixi() {
   const s = await api('/api/status');
+  gwReady = !!(s.configured && s.configured.gateway);
   $('engStat').innerHTML =
     `<div class="it"><b>${s.seeds}</b><span>种子总量</span></div>` +
     `<div class="it"><b>${s.vectors}</b><span>向量索引</span></div>` +
@@ -1033,7 +1033,12 @@ function initWs() {
     else if (d.type === 'manas_state') {
       if (Number(d.ai_id || 0) === Number(ownerAiId)) { if (window.HabitGraph) HabitGraph.setLive(d); renderManasHud(d); }
     }
-    else if (d.type === 'notice') { toast(d.text || ''); }
+    else if (d.type === 'notice') {
+      const msg = d.text || '';
+      toast(msg);
+      // 服务端明确报"没填 Key"：直接把申请引导弹出来，别让用户去猜。
+      if (msg.includes('API Key')) { gwReady = false; setTimeout(openKeySheet, 300); }
+    }
     else if (d.type === 'error') {
       if (d.code === 'auth') { authFail = true; forceLogin(); }
       else toast('出错：' + d.message);
@@ -1041,6 +1046,39 @@ function initWs() {
   };
   ws.onclose = () => { ready = false; if (!authFail && !isMyAi(ownerAiId)) setTimeout(() => { if (ownerAiId && ME) initWs(); }, 2000); };
   ws.onerror = () => {};
+}
+
+/* ── 等 WS 就绪（麦克风点击时若还在连接，等一会儿再开口，而不是直接拒绝） ── */
+function waitReady(ms) {
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    const tick = () => {
+      if (ready) return resolve(true);
+      if (Date.now() - t0 > ms) return resolve(false);
+      setTimeout(tick, 120);
+    };
+    if (!ws || ws.readyState > WebSocket.OPEN) initWs();
+    tick();
+  });
+}
+
+/* ── 未配置 Key 的引导弹窗（录音前必弹） ── */
+function openKeySheet() {
+  const body = $('sheetBody');
+  body.innerHTML = '';
+  body.appendChild(el('div', 'sfld',
+    '还差一把 Key：对话、语音识别、语音合成、记忆向量全部走同一个统一接口，先申请一把就能跑通。'));
+  body.appendChild(el('div', 'sfld',
+    '· 手机号登录后点「申请新 Key」，每把自带免费额度<br>'
+    + '· 复制 Key，回到这里点「我已经有 Key」粘进 API Key 一栏'));
+  const btns = el('div', 'sbtns');
+  const bApply = el('button', 'sbtnp', '去申请 Key');
+  const bHave = el('button', '', '我已经有 Key');
+  bApply.onclick = () => window.open(KEY_PORTAL, '_blank', 'noopener');
+  bHave.onclick = () => { closeSheet(); openConfigSheet(); };
+  btns.appendChild(bHave); btns.appendChild(bApply);
+  body.appendChild(btns);
+  openSheet('先申请一把 Key');
 }
 
 /* ── 末那识心智涌现中枢：控制台无 WS 会话，需显式载入热态 + 轮询实时激活值 ── */
@@ -1513,7 +1551,9 @@ $('mic').onclick = () => recording ? stopRec() : startRec();
 
 async function startRec() {
   if (isMyAi(ownerAiId)) { toast('这是你自己的AI本体，只能查看 · 对话请切换到其它AI本体'); return; }
-  if (!ready) { toast('连接中，稍候再试'); return; }
+  // 没配 Key：一切调用都会失败，必须在开口之前就把申请入口摆到眼前。
+  if (!gwReady) { openKeySheet(); return; }
+  if (!ready && !await waitReady(4000)) { toast('对话服务未连接，请刷新页面重试'); return; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   } catch (e) { toast('无法访问麦克风：' + e.message); return; }
@@ -2007,7 +2047,12 @@ if (window.HabitGraph) {
   });
 }
 $('manasWake').onclick = () => { if (ownerAiId) attachManas(ownerAiId); else toast('请先选择AI本体'); };
-initAuth().then(ok => { if (ok) loadAis(); });
+initAuth().then(ok => {
+  if (!ok) return;
+  loadAis();
+  // 登录即确认统一接口是否配好 Key：没配的话，第一次点录音就直接弹申请引导。
+  api('/api/status').then(s => { gwReady = !!(s.configured && s.configured.gateway); }).catch(() => {});
+});
 </script>
 </body>
 </html>
