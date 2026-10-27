@@ -105,7 +105,7 @@ async def apply() -> dict:
     return await asyncio.to_thread(_apply_sync)
 
 
-def schedule_restart(delay: float = 1.0) -> None:
+def schedule_restart(delay: float = 1.5) -> None:
     """把当前进程原地替换成新代码（同一个 python、同样的启动参数、同一个端口）。
 
     收到 /api/update/apply 的响应后才触发：先让 HTTP 响应发出去，再 execv。
