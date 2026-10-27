@@ -271,6 +271,17 @@
   .vbtn { height:32px; border-radius:16px; background:#232837; border:none; color:#9aa0ad; font-size:13px; cursor:pointer; padding:0 10px; min-width:32px; }
   .vbtn.red { background:#3a2020; color:#e08c8c; }
   .vbtn.confirm { background:#8a3a3a; color:#ffd9d9; }
+  /* ── 波形编辑器 ── */
+  .waveform-editor { background:#131722; border:1px solid #2a2e3a; border-radius:12px; overflow:hidden; margin-top:10px; }
+  .waveform-editor-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid #232837; gap:8px; }
+  .waveform-editor-title { font-size:13px; font-weight:600; color:#e8c88a; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .waveform-canvas-wrap { padding:10px; }
+  .waveform-canvas { width:100%; height:120px; border-radius:8px; background:rgba(0,0,0,.3); touch-action:none; cursor:crosshair; display:block; }
+  .waveform-time { text-align:center; font-size:12px; color:#8a92a3; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .waveform-controls, .waveform-toolbar { display:flex; gap:8px; padding:8px 10px; flex-wrap:wrap; justify-content:center; border-top:1px solid #232837; }
+  .wbtn { background:#232837; color:#c8cdd8; border:1px solid #2a2e3a; border-radius:9px; padding:7px 12px; font-size:12.5px; cursor:pointer; }
+  .wbtn.primary { background:#2b2416; color:#e8c88a; border-color:rgba(184,146,90,.45); }
+  .wbtn.back { background:transparent; border:none; color:#7a8194; flex:none; }
   /* ── 我的形象 ── */
   .faceup { text-align:center; border:1.5px dashed rgba(184,146,90,.5); color:#e8c88a; border-radius:12px; padding:14px; font-size:13.5px; cursor:pointer; margin-bottom:12px; }
   .faceup:active { transform:scale(.98); }
@@ -476,9 +487,30 @@ function authOpts(o) {
   return o;
 }
 async function api(path, opts) {
-  const r = await fetch(API_BASE + path.replace(/^\//, ''), authOpts(opts));
+  let r;
+  try {
+    r = await fetch(API_BASE + path.replace(/^\//, ''), authOpts(opts));
+  } catch (e) {
+    // 连不上后端（服务没起 / 端口不对）：原来的 r.json() 只会抛一句 Failed to fetch
+    throw new Error(`连不上后端服务（${API_BASE}）——请确认服务已启动`);
+  }
   if (r.status === 401) { forceLogin(); throw new Error('请先登录'); }
-  return r.json();
+  const text = await r.text();
+  if (!r.ok) {
+    // 以前这里直接 r.json()，404/502 时抛的是解析错误，界面只能笼统说「加载失败」。
+    // 现在把状态码和为什么带上，用户/维护者一眼能看出是"接口不存在"还是"服务挂了"。
+    let detail = '';
+    try {
+      const j = JSON.parse(text);
+      detail = j.detail || (j.error && (j.error.message || j.error)) || '';
+    } catch (e) { detail = String(text || '').slice(0, 80); }
+    throw new Error(`接口 ${path} 返回 ${r.status}${detail ? '：' + detail : ''}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(`接口 ${path} 返回的不是 JSON（可能是反代/静态服务器把请求吃掉了）`);
+  }
 }
 async function initAuth() {
   const uid = localStorage.getItem('alaya_uid'), tk = localStorage.getItem('alaya_token');
@@ -682,7 +714,16 @@ async function openConfigSheet() {
   openSheet('模型设置');
   const body = $('sheetBody'); body.innerHTML = '<div class="empty">加载中…</div>';
   let d;
-  try { d = await api('/api/config'); } catch (e) { body.innerHTML = '<div class="empty">加载失败</div>'; return; }
+  try { d = await api('/api/config'); }
+  catch (e) {
+    // 把真实原因摊开：是 404（后端版本旧/没起）还是 502（后端挂了），不要再只说「加载失败」。
+    body.innerHTML = '';
+    body.appendChild(el('div', 'empty', '读取配置失败：' + esc(e.message)));
+    const retry = el('button', 'cfgsave', '重试');
+    retry.onclick = () => openConfigSheet();
+    body.appendChild(retry);
+    return;
+  }
   const cfg = d.config || {};
   body.innerHTML = '';
   const inputs = {};
