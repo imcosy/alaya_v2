@@ -29,6 +29,15 @@
   .s2slight.warn i { background:#e8c88a; }
   .s2slight.err { color:#e08c8c; border-color:rgba(224,140,140,.45); background:rgba(224,140,140,.10); }
   .s2slight.err i { background:#e08c8c; box-shadow:0 0 6px rgba(224,140,140,.8); }
+  /* 有新版本时在头像图标右上角点一颗红点 */
+  .hicon { position:relative; }
+  .hicon.dot::after { content:''; position:absolute; top:3px; right:3px; width:7px; height:7px;
+                      border-radius:50%; background:#e0655f; box-shadow:0 0 5px rgba(224,101,95,.8); }
+  /* 更新列表 */
+  .updlist { background:#12151c; border:1px solid #232837; border-radius:10px; padding:8px 10px;
+             max-height:190px; overflow-y:auto; margin:6px 0 4px; }
+  .upditem { font-size:12.5px; color:#c8cdd8; line-height:1.7; word-break:break-word; }
+  .upditem code { color:#b8925a; font-size:11.5px; margin-right:6px; }
   /* ── 三栏主结构：左（对话）· 中（习气网络 3D）· 右（记忆/我识/熏习） ── */
   #cols { flex:1; min-height:0; display:grid; grid-template-columns:392px minmax(0,1fr) 392px; gap:10px;
           padding:10px 14px 14px; }
@@ -734,7 +743,8 @@ $('btnUser').onclick = async () => {
   body.appendChild(entryrow);
   const entryrow2 = el('div', 'entryrow');
   const b3 = el('div', 'entry', '⚙️ 模型设置'); b3.onclick = () => openConfigSheet();
-  entryrow2.appendChild(b3);
+  const b4 = el('div', 'entry', '🔄 检查更新'); b4.onclick = () => openUpdateSheet();
+  entryrow2.appendChild(b3); entryrow2.appendChild(b4);
   body.appendChild(entryrow2);
   openSheet('我的资料');
 };
@@ -818,6 +828,83 @@ async function openConfigSheet() {
     save.disabled = false;
   };
   body.appendChild(save);
+}
+
+/* ── 检查更新（git pull --ff-only，成功后进程原地重启） ── */
+async function openUpdateSheet() {
+  openSheet('检查更新');
+  const body = $('sheetBody'); body.innerHTML = '<div class="empty">检查中…</div>';
+  let d;
+  try { d = await api('/api/update/check'); }
+  catch (e) {
+    body.innerHTML = '';
+    body.appendChild(el('div', 'empty', '检查失败：' + esc(e.message)));
+    return;
+  }
+  body.innerHTML = '';
+  body.appendChild(el('div', 'urow',
+    `<span class="k">当前版本</span><span class="v">${esc(d.version || 'unknown')}</span>`));
+
+  if (!d.ok) { body.appendChild(el('div', 'sfld', esc(d.error || '无法检查更新'))); return; }
+  if (!d.behind) { body.appendChild(el('div', 'sfld', '已是最新版本。')); return; }
+
+  body.appendChild(el('div', 'sfld',
+    `发现 ${d.behind} 个新提交（${esc(d.local)} → ${esc(d.remote)}）：`));
+  const list = el('div', 'updlist');
+  (d.commits || []).forEach(c => list.appendChild(el('div', 'upditem',
+    `<code>${esc(c.sha)}</code>${esc(c.subject)}`)));
+  body.appendChild(list);
+
+  if (d.dirty) {
+    body.appendChild(el('div', 'sfld',
+      '本地有未提交的改动，更新已被拒绝——请先 git commit 或 git stash，再回来点更新。'));
+    return;
+  }
+  body.appendChild(el('div', 'sfld', '更新会拉取代码并自动重启服务，当前对话会中断。'));
+  const btn = el('button', 'cfgsave', '立即更新并重启');
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = '更新中…';
+    try {
+      const r = await api('/api/update/apply', { method: 'POST' });
+      if (!r.ok) {
+        toast(r.error || '更新失败');
+        btn.disabled = false; btn.textContent = '立即更新并重启';
+        return;
+      }
+      body.innerHTML = '';
+      body.appendChild(el('div', 'sfld', `已更新到 ${esc(r.after || '')}，服务正在重启…`));
+      body.appendChild(el('div', 'empty', '页面将在服务恢复后自动刷新'));
+      $('btnUser').classList.remove('dot');
+      waitServerBack(0);
+    } catch (e) {
+      toast('更新失败：' + e.message);
+      btn.disabled = false; btn.textContent = '立即更新并重启';
+    }
+  };
+  body.appendChild(btn);
+}
+
+/* 重启期间端口会断，等它回来再刷新页面 */
+function waitServerBack(tries) {
+  setTimeout(async () => {
+    try {
+      const r = await fetch(API_BASE + 'api/status', { headers: authOpts({}).headers });
+      if (r.ok || r.status === 401) { location.reload(); return; }
+    } catch (e) { /* 还没起来，继续等 */ }
+    if (tries < 40) waitServerBack(tries + 1);
+    else toast('服务没有恢复，请手动重启后刷新页面');
+  }, 700);
+}
+
+/* 启动时静默检查一次：有新提交就在头像上点个红点，不打扰 */
+async function checkUpdateQuietly() {
+  try {
+    const d = await api('/api/update/check');
+    if (d.ok && d.behind > 0) {
+      $('btnUser').classList.add('dot');
+      $('btnUser').title = `有 ${d.behind} 个新提交，点头像 → 检查更新`;
+    }
+  } catch (e) { /* 离线安装/无 git 时不打扰 */ }
 }
 
 
@@ -2156,6 +2243,7 @@ initAuth().then(ok => {
   loadAis();
   // 登录即确认统一接口是否配好 Key：没配的话，状态灯显示「未配置 Key」、点录音直接弹申请引导。
   refreshGatewayState();
+  checkUpdateQuietly();
 });
 </script>
 </body>

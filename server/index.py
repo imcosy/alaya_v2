@@ -39,7 +39,7 @@ logging.basicConfig(level=logging.INFO,
 logging.getLogger("websockets").setLevel(logging.CRITICAL)
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-from server import db, settings, seeds as seeds_mod, xixi, retrieval, extract, selfmodel, auth, profile, amnesia, organize, guide, life_stages, manas, dualview, working  # noqa: E402
+from server import db, settings, seeds as seeds_mod, xixi, retrieval, extract, selfmodel, auth, profile, amnesia, organize, guide, life_stages, manas, dualview, working, updater  # noqa: E402
 from server.llm import llm_stream, llm_chat_fn, asr_recognize, tts_stream, cut_sentence, vl_describe  # noqa: E402
 
 PUBLIC_DIR = os.path.join(os.path.dirname(_HERE), "public")
@@ -1754,6 +1754,23 @@ app = FastAPI(title="Alaya Memory Engine", lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(amnesia.router)
+
+
+# ── 从 GitHub 更新（git pull --ff-only，成功后原地重启进程）──
+
+@app.get("/api/update/check")
+async def api_update_check(user: dict = Depends(auth.get_current_user)):
+    """看看 origin 上有没有新提交。非 git 安装（zip 解压）会明确返回不支持。"""
+    return await updater.check()
+
+
+@app.post("/api/update/apply")
+async def api_update_apply(user: dict = Depends(auth.get_current_user)):
+    """拉取更新；成功则 1 秒后原地重启（先让这次响应发出去）。"""
+    r = await updater.apply()
+    if r.get("ok"):
+        updater.schedule_restart()
+    return r
 
 
 @app.get("/api/status")
