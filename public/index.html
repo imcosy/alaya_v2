@@ -18,6 +18,17 @@
   .hicon { flex:none; width:34px; height:34px; border-radius:50%; background:#1a1d25; border:1px solid #2a2e3a;
            display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer; }
   .hicon:active { transform:scale(.92); }
+  /* 右上角状态灯：一眼看出「未配置 Key / 连接中 / 已连接 / 服务异常」 */
+  .s2slight { flex:none; display:flex; align-items:center; gap:6px; font-size:12px; line-height:1;
+              padding:7px 10px; border-radius:13px; border:1px solid #2a2e3a; background:#161a23;
+              color:#9aa0ad; cursor:pointer; white-space:nowrap; }
+  .s2slight i { width:7px; height:7px; border-radius:50%; background:#6b7280; display:block; }
+  .s2slight.ok { color:#7dc98f; border-color:rgba(125,201,143,.38); background:rgba(125,201,143,.10); }
+  .s2slight.ok i { background:#7dc98f; box-shadow:0 0 6px rgba(125,201,143,.75); }
+  .s2slight.warn { color:#e8c88a; border-color:rgba(184,146,90,.42); background:rgba(184,146,90,.10); }
+  .s2slight.warn i { background:#e8c88a; }
+  .s2slight.err { color:#e08c8c; border-color:rgba(224,140,140,.45); background:rgba(224,140,140,.10); }
+  .s2slight.err i { background:#e08c8c; box-shadow:0 0 6px rgba(224,140,140,.8); }
   /* ── 三栏主结构：左（对话）· 中（习气网络 3D）· 右（记忆/我识/熏习） ── */
   #cols { flex:1; min-height:0; display:grid; grid-template-columns:392px minmax(0,1fr) 392px; gap:10px;
           padding:10px 14px 14px; }
@@ -315,6 +326,7 @@
 <header>
   <div class="hdrow">
     <h1>阿赖耶 v2 <span>· 记忆引擎控制台</span></h1>
+    <div class="s2slight" id="s2sLight" title=""><i></i><span class="txt">检测中…</span></div>
     <div class="aibadge" id="aiBadge"></div>
     <div class="hicon" id="btnAis">🤖</div>
     <div class="hicon" id="btnUser">👤</div>
@@ -471,10 +483,34 @@ let ME = null, authFail = false;
 // 统一接口是否已配好 Key（来自 /api/status 的 configured.gateway）。
 // 没配 Key 时对话/语音/向量全不可用，录音前必须先引导用户去申请。
 let gwReady = false;
+// 状态灯用：lightErr 非空 = 服务异常（后端/WS 出问题）；wsFails 用于判定"反复连不上"
+let lightErr = '', wsFails = 0;
+function refreshLight() {
+  const box = $('s2sLight'); if (!box) return;
+  const txt = box.querySelector('.txt');
+  let cls = '', label = '', tip = '';
+  if (!ME) { label = '未登录'; tip = '请先登录'; }
+  else if (lightErr) { cls = 'err'; label = '服务异常'; tip = lightErr; }
+  else if (!gwReady) { cls = 'warn'; label = '未配置 Key'; tip = '还没申请 Key：点这里申请并填入'; }
+  else if (isMyAi(ownerAiId)) {
+    label = '仅查看'; tip = '当前选中的是你自己的AI本体，只能看记忆，对话请切换其它本体';
+  }
+  else if (ready) { cls = 'ok'; label = '已连接'; tip = '统一接口已配置，对话服务已连接'; }
+  else { label = '连接中…'; tip = '正在连接对话服务'; }
+  box.className = 's2slight' + (cls ? ' ' + cls : '');
+  txt.textContent = label;
+  box.title = tip;
+}
+$('s2sLight').onclick = () => {
+  if (lightErr) { toast(lightErr); initWs(); refreshGatewayState(); return; }
+  if (!gwReady) { openKeySheet(); return; }
+  if (!ready) { initWs(); toast('正在重新连接…'); refreshLight(); return; }
+  toast('已连接 · 一切正常');
+};
 function saveMe() { localStorage.setItem('alaya_uid', ME.id); localStorage.setItem('alaya_token', ME.token); }
 function clearMe() { ME = null; localStorage.removeItem('alaya_uid'); localStorage.removeItem('alaya_token'); }
 function showLogin() { $('loginMask').style.display = 'flex'; }
-function forceLogin() { clearMe(); showLogin(); }
+function forceLogin() { clearMe(); ready = false; refreshLight(); showLogin(); }
 function lgErr(t) { $('lgErr').textContent = t; }
 function authQ(extra) {
   const e = extra || {};
@@ -557,7 +593,7 @@ $('lgGo').onclick = async () => {
       $('loginMask').style.display = 'none';
       lgErr('');
       loadAis();
-      api('/api/status').then(s => { gwReady = !!(s.configured && s.configured.gateway); }).catch(() => {});
+      refreshGatewayState();
     } else lgErr(d.detail || d.message || (lgMode === 'register' ? '注册失败' : '登录失败'));
   } catch (e) { lgErr(e.message || '操作失败'); }
   $('lgGo').disabled = false;
@@ -634,6 +670,7 @@ function pickAi(id) {
     : '点按开始对话 · 说完自动回复 · 说话即打断';
   if (mine) { if (ws) { try { ws.close(); } catch (e) {} ws = null; } }
   else initWs();
+  refreshLight();
   attachManas(id);
   refreshPage(curPage);
 }
@@ -773,6 +810,8 @@ async function openConfigSheet() {
       if (r.error || r.detail) { toast(r.error || r.detail); }
       else {
         gwReady = !!(r.configured && r.configured.gateway);
+        lightErr = '';
+        refreshLight();
         toast(gwReady ? '✓ 已保存，现在可以开始对话了' : '✓ 已保存');
       }
     } catch (e) { toast('保存失败：' + e.message); }
@@ -1024,6 +1063,7 @@ async function loadSelf() {
 async function loadXixi() {
   const s = await api('/api/status');
   gwReady = !!(s.configured && s.configured.gateway);
+  lightErr = ''; refreshLight();
   $('engStat').innerHTML =
     `<div class="it"><b>${s.seeds}</b><span>种子总量</span></div>` +
     `<div class="it"><b>${s.vectors}</b><span>向量索引</span></div>` +
@@ -1047,13 +1087,18 @@ function initWs() {
   ready = false; authFail = false;
   ws = new WebSocket(WS_URL);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => ws.send(JSON.stringify({ type: 'init', owner_ai_id: ownerAiId, peer_ai_id: 0,
-    user_id: ME ? ME.id : 0, token: ME ? ME.token : '' }));
+  ws.onopen = () => {
+    wsFails = 0;
+    refreshLight();
+    ws.send(JSON.stringify({ type: 'init', owner_ai_id: ownerAiId, peer_ai_id: 0,
+      user_id: ME ? ME.id : 0, token: ME ? ME.token : '' }));
+  };
   ws.onmessage = ev => {
     if (ev.data instanceof ArrayBuffer) { playPcm(ev.data); return; }
     let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
     if (d.type === 'ready') {
       ready = true;
+      lightErr = ''; refreshLight();
       sysLine(d.mode === 'guide'
         ? '已连接「' + d.ai_name + '」— 记忆归属「' + d.owner_name + '」，TA会边聊边帮TA找回记忆'
         : '已连接「' + d.ai_name + '」— 记忆已就位');
@@ -1078,14 +1123,20 @@ function initWs() {
       const msg = d.text || '';
       toast(msg);
       // 服务端明确报"没填 Key"：直接把申请引导弹出来，别让用户去猜。
-      if (msg.includes('API Key')) { gwReady = false; setTimeout(openKeySheet, 300); }
+      if (msg.includes('API Key')) { gwReady = false; refreshLight(); setTimeout(openKeySheet, 300); }
     }
     else if (d.type === 'error') {
       if (d.code === 'auth') { authFail = true; forceLogin(); }
       else toast('出错：' + d.message);
     }
   };
-  ws.onclose = () => { ready = false; if (!authFail && !isMyAi(ownerAiId)) setTimeout(() => { if (ownerAiId && ME) initWs(); }, 2000); };
+  ws.onclose = () => {
+    ready = false;
+    wsFails++;
+    if (wsFails >= 3) lightErr = '对话服务连接不上（WebSocket 反复断开）——请确认后端已启动、端口可达';
+    refreshLight();
+    if (!authFail && !isMyAi(ownerAiId)) setTimeout(() => { if (ownerAiId && ME) initWs(); }, 2000);
+  };
   ws.onerror = () => {};
 }
 
@@ -1101,6 +1152,18 @@ function waitReady(ms) {
     if (!ws || ws.readyState > WebSocket.OPEN) initWs();
     tick();
   });
+}
+
+/* ── 统一接口状态（状态灯的唯一数据源） ── */
+async function refreshGatewayState() {
+  try {
+    const s = await api('/api/status');
+    gwReady = !!(s.configured && s.configured.gateway);
+    lightErr = '';
+  } catch (e) {
+    lightErr = e.message;
+  }
+  refreshLight();
 }
 
 /* ── 未配置 Key 的引导弹窗（录音前必弹） ── */
@@ -2089,10 +2152,10 @@ if (window.HabitGraph) {
 }
 $('manasWake').onclick = () => { if (ownerAiId) attachManas(ownerAiId); else toast('请先选择AI本体'); };
 initAuth().then(ok => {
-  if (!ok) return;
+  if (!ok) { refreshLight(); return; }
   loadAis();
-  // 登录即确认统一接口是否配好 Key：没配的话，第一次点录音就直接弹申请引导。
-  api('/api/status').then(s => { gwReady = !!(s.configured && s.configured.gateway); }).catch(() => {});
+  // 登录即确认统一接口是否配好 Key：没配的话，状态灯显示「未配置 Key」、点录音直接弹申请引导。
+  refreshGatewayState();
 });
 </script>
 </body>
