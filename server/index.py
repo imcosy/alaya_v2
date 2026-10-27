@@ -43,6 +43,9 @@ from server import db, settings, seeds as seeds_mod, xixi, retrieval, extract, s
 from server.llm import llm_stream, llm_chat_fn, asr_recognize, tts_stream, cut_sentence, vl_describe  # noqa: E402
 
 PUBLIC_DIR = os.path.join(os.path.dirname(_HERE), "public")
+# 本次进程的启动时间：前端更新重启后靠它判断"新进程已经起来了"，
+# 否则旧进程还在的那 1 秒里 /api/status 也是 200，会提前刷新、把登录态丢在重启中间。
+_STARTED_AT = int(time.time())
 
 # 无效语音的响度判据：识别不出内容、但声音明显很大 → 形成「疑问」种子。
 # 真人环境底噪 RMS 约 0.005~0.02；正常说话 0.03~0.08；大声喊 0.10 以上。
@@ -225,6 +228,7 @@ async def _turn_guard(session: Session, ws: WebSocket, sense: str, scene: str, p
         log.error("[turn] 表达失败: %s", e, exc_info=True)
         with contextlib.suppress(Exception):
             await ws.send_json({"type": "notice", "text": f"这一轮没说成：{str(e)[:180]}"})
+
 
 
 async def _cancel_turn(session: Session):
@@ -780,7 +784,7 @@ async def _condense(session, reason: str, ws: WebSocket | None = None) -> dict:
                                     speaker_name=session.speaker_name or session.peer_label)
         # 声纹锚点绝不在这里回填：结生时"新出现的人名"是模型从对话里猜的，拿它去绑定
         # 声纹就等于把某段声音硬塞给猜出来的人（本人锚点被别人的声音覆盖，记忆全乱）。
-        # 开放版没有声纹服务：说话人即当前登录用户本人（见 _identify_speaker）。
+        # 本人声纹只在 _identify_speaker 确认认主时登记（见 _bootstrap_own_voice）。
         await _evolve_self(owner, peer, dialogue, peer_distill=(session.mode != "guide"))
     await working.drop_first(speaker_ai, owner, len(batch))
     written = out.get("written") or []
@@ -1658,12 +1662,112 @@ async def _pick_ack(session: Session, said: str) -> str:
         return ""
 
 
-# ── 听声识人（开放版）────────────────────────────────────────
-#   开放版不接声纹服务：单人使用，麦克风前的人就是当前登录用户本人。
-#   要接声纹（xd_speaker / CAM++ 等），在 server/llm.py 的 asr_recognize 里
-#   把第二返回值填成声纹向量，并在这里恢复「本人 / 他人」的比对逻辑。
+# ── 听声识人（铁律·华哥 2026-10-24）─────────────────────────────
+#   对话里只认「当前登录用户本人」的声纹。其他人的声音一律不算用户的声音——
+#   不写记忆、不当成"用户说的话"、也不以用户的名义作答，否则记忆全乱。
+#   本人参考：xd_speaker 里绑定到该 user_id 的簇（全平台唯一权威）
+#           + alaya_persons 里与本账号同名的锚点（本链路早期自动登记的簇）。
+#   同域簇实测：同人 0.53~0.76，不同人 ≤0.40 —— 0.45 是可分界的下限。
+SPEAKER_ME_FLOOR = 0.45      # 判为本人的相似度下限
+SPEAKER_ME_MARGIN = 0.05     # 本人还须明显领先"最像的他人"，避免都像时误判
+SPEAKER_EMB_DIM = 192        # CAM++ 声纹维度
+
+
+def _unit(v):
+    import numpy as np
+    n = float(np.linalg.norm(v))
+    return v / n if n > 0 else v
+
+
+async def _speaker_refs(session: Session) -> tuple[list, list]:
+    """(本人声纹参考列表, 他人参考[(称呼, 向量)])——他人只用于报出"那是谁"，不参与认主"""
+    import numpy as np
+    uid = int((session.user or {}).get("id") or 0)
+    me_name = str((session.user or {}).get("nickname") or "").strip()
+    me: list = []
+    others: list = []
+    nbytes = SPEAKER_EMB_DIM * 4
+    if uid:
+        rows = await db.pool().query(
+            "SELECT embedding FROM xd_speaker WHERE user_id=%s AND embedding IS NOT NULL "
+            "AND LENGTH(embedding)=%s", [uid, nbytes])
+        me += [_unit(np.frombuffer(r["embedding"], dtype=np.float32)) for r in rows]
+        rows = await db.pool().query(
+            "SELECT nickname, embedding FROM xd_speaker WHERE user_id IS NOT NULL AND user_id<>%s "
+            "AND embedding IS NOT NULL AND LENGTH(embedding)=%s", [uid, nbytes])
+        for r in rows:
+            rig = _unit(np.frombuffer(r["embedding"], dtype=np.float32))
+            # 同一昵称的另一账号簇（同一个人开了两个号）也算本人参考，
+            # 否则本人会被判成"旁人：自己"
+            if me_name and str(r["nickname"] or "").strip() == me_name:
+                me.append(rig)
+            else:
+                others.append((str(r["nickname"] or "旁人"), rig))
+    ai_ids = sorted({int(x) for x in (session.owner_ai_id, session.peer_ai_id) if int(x or 0) > 0})
+    if ai_ids:
+        import base64 as b64
+        ph = ",".join(["%s"] * len(ai_ids))
+        rows = await db.pool().query(
+            f"SELECT name, speaker_emb FROM alaya_persons "
+            f"WHERE owner_ai_id IN ({ph}) AND speaker_emb IS NOT NULL", ai_ids)
+        for r in rows:
+            emb = np.frombuffer(b64.b64decode(r["speaker_emb"]), dtype=np.float32)
+            if len(emb) != SPEAKER_EMB_DIM:
+                continue
+            name = str(r["name"] or "").strip()
+            if me_name and name == me_name:
+                me.append(_unit(emb))
+            else:
+                others.append((name or "旁人", _unit(emb)))
+    return me, others
+
+
 async def _identify_speaker(session: Session, spk_emb_b64: str | None) -> tuple[bool, str]:
-    return True, str((session.user or {}).get("nickname") or "").strip()
+    """声纹 → (是否当前用户本人, 称呼)。
+
+    只有确认是「当前登录用户本人」才返回 True；其他人/未识别一律 False。
+    绝不再把任何一个陌生声纹自动登记成本人（旧实现每说一句就覆盖一次本人锚点，
+    于是谁说话都成了"大明哥"——记忆错乱的根）。
+    """
+    if not spk_emb_b64:
+        # 开放版不接声纹服务：单人使用场景，麦克风前的人就是当前登录用户本人。
+        return True, str((session.user or {}).get("nickname") or "").strip()
+    import numpy as np, base64 as b64
+    cur = np.frombuffer(b64.b64decode(spk_emb_b64), dtype=np.float32)
+    if len(cur) != SPEAKER_EMB_DIM:
+        log.warning("[speaker] 声纹维度异常（%s），无法比对", len(cur))
+        return False, ""
+    cur = _unit(cur)
+    me_refs, other_refs = await _speaker_refs(session)
+    s_me = max((float(cur @ r) for r in me_refs), default=-1.0)
+    s_other, other_name = -1.0, ""
+    for name, ref in other_refs:
+        s = float(cur @ ref)
+        if s > s_other:
+            s_other, other_name = s, name
+    if me_refs and s_me >= SPEAKER_ME_FLOOR and s_me >= s_other + SPEAKER_ME_MARGIN:
+        return True, str((session.user or {}).get("nickname") or "").strip()
+    if not me_refs and s_other < SPEAKER_ME_FLOOR:
+        # 本账号从未登记过本人声纹：第一位开口的人就是本人（认主），此后以它为准
+        name = str((session.user or {}).get("nickname") or "").strip()
+        if name:
+            await _bootstrap_own_voice(session, spk_emb_b64, name)
+            return True, name
+    if s_other >= SPEAKER_ME_FLOOR:
+        log.info("[speaker] 非本人：%s（本人最像 %.2f / 他人 %.2f）", other_name, s_me, s_other)
+        return False, other_name
+    log.info("[speaker] 未识别声纹（本人最像 %.2f / 他人最像 %.2f）——不作本人处理", s_me, s_other)
+    return False, ""
+
+
+async def _bootstrap_own_voice(session: Session, spk_emb_b64: str, name: str):
+    """首次认主：本账号还没有任何本人声纹参考时，把第一段声音登记为本人的锚点"""
+    for ai in sorted({int(x) for x in (session.owner_ai_id, session.peer_ai_id) if int(x or 0) > 0}):
+        pid = await extract.resolve_person(ai, name)
+        await db.pool().exec("UPDATE alaya_persons SET speaker_emb=%s WHERE id=%s",
+                             [spk_emb_b64, int(pid)])
+    session.speaker_name = name
+    log.info("[speaker] 本人声纹首次登记：%s", name)
 
 
 # ────────────────────────── 应用组装 ──────────────────────────
@@ -1714,7 +1818,6 @@ async def _warm_vectors():
 
 async def _warm_external():
     """外部服务的预热与自愈（后台执行）。
-
     服务可用性不依赖外部 API：接口先起来，向量自检/补算、如意我识凝聚在后台跑。
     配置还没填时这里会失败并在日志里说明，填好 key 后下一轮对话即可用。
     """
@@ -1756,23 +1859,6 @@ app.include_router(profile.router)
 app.include_router(amnesia.router)
 
 
-# ── 从 GitHub 更新（git pull --ff-only，成功后原地重启进程）──
-
-@app.get("/api/update/check")
-async def api_update_check(user: dict = Depends(auth.get_current_user)):
-    """看看 origin 上有没有新提交。非 git 安装（zip 解压）会明确返回不支持。"""
-    return await updater.check()
-
-
-@app.post("/api/update/apply")
-async def api_update_apply(user: dict = Depends(auth.get_current_user)):
-    """拉取更新；成功则 1 秒后原地重启（先让这次响应发出去）。"""
-    r = await updater.apply()
-    if r.get("ok"):
-        updater.schedule_restart()
-    return r
-
-
 @app.get("/api/status")
 async def api_status(user: dict = Depends(auth.get_current_user)):
     seed_n = await db.pool().query("SELECT COUNT(*) AS n FROM alaya_seeds")
@@ -1782,6 +1868,7 @@ async def api_status(user: dict = Depends(auth.get_current_user)):
         "vectors": retrieval.vector_count(),
         "emb_ready": retrieval.model_ready(),
         "configured": {k: settings.is_configured(k) for k in ("gateway",)},
+        "started_at": _STARTED_AT,
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 

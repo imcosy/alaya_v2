@@ -865,6 +865,10 @@ async function openUpdateSheet() {
   btn.onclick = async () => {
     btn.disabled = true; btn.textContent = '更新中…';
     try {
+      // 先记下"旧进程"的启动时间：重启那 1 秒里旧进程仍会回 200，
+      // 只等端口活着就刷新会刷在换进程的中途——页面加载时后端正好断，登录态就丢了。
+      let oldStarted = 0;
+      try { oldStarted = (await api('/api/status')).started_at || 0; } catch (e) {}
       const r = await api('/api/update/apply', { method: 'POST' });
       if (!r.ok) {
         toast(r.error || '更新失败');
@@ -875,7 +879,7 @@ async function openUpdateSheet() {
       body.appendChild(el('div', 'sfld', `已更新到 ${esc(r.after || '')}，服务正在重启…`));
       body.appendChild(el('div', 'empty', '页面将在服务恢复后自动刷新'));
       $('btnUser').classList.remove('dot');
-      waitServerBack(0);
+      waitServerBack(0, oldStarted);
     } catch (e) {
       toast('更新失败：' + e.message);
       btn.disabled = false; btn.textContent = '立即更新并重启';
@@ -884,14 +888,17 @@ async function openUpdateSheet() {
   body.appendChild(btn);
 }
 
-/* 重启期间端口会断，等它回来再刷新页面 */
-function waitServerBack(tries) {
+/* 等"新进程"起来再刷新：只有 started_at 变了才算重启完成 */
+function waitServerBack(tries, oldStarted) {
   setTimeout(async () => {
     try {
       const r = await fetch(API_BASE + 'api/status', { headers: authOpts({}).headers });
-      if (r.ok || r.status === 401) { location.reload(); return; }
-    } catch (e) { /* 还没起来，继续等 */ }
-    if (tries < 40) waitServerBack(tries + 1);
+      if (r.ok) {
+        const s = await r.json();
+        if (s.started_at && s.started_at !== oldStarted) { location.reload(); return; }
+      }
+    } catch (e) { /* 新进程还没起来，继续等 */ }
+    if (tries < 40) waitServerBack(tries + 1, oldStarted);
     else toast('服务没有恢复，请手动重启后刷新页面');
   }, 700);
 }
