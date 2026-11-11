@@ -21,6 +21,7 @@ import json
 import logging
 import math
 import random
+import threading
 import time
 from collections import deque
 
@@ -134,6 +135,9 @@ class ManasCore:
 
     def __init__(self, owner_ai_id: int):
         self.owner_ai_id = int(owner_ai_id)
+        # 网络状态的互斥：step（同步、可能被多线程调用）与节点增删（inject/_destroy/forget）
+        # 必须串行，否则会出现"nodes 还在、hist 已被摘掉"→ self.hist[sid] KeyError（线上实测 5）。
+        self._lock = threading.RLock()
         self.tick = 0
         self.nodes: dict[int, dict] = {}       # seed_id → {type, weight, act, sensory}
         self.edges: list[tuple[int, int, float]] = []   # (src, dst, weight)
@@ -287,6 +291,8 @@ class ManasCore:
             [int(working.WINDOW_TTL_SEC), sid])
         if not to_network:
             return sid
+        # 先把历史槽位备好，再让节点进网：否则并发的一拍会看到"nodes 有、hist 没有"→ KeyError
+        self.hist[sid] = deque([0.0] * WINDOW, maxlen=WINDOW)
         self.nodes[sid] = {"id": sid, "type": "sensory", "name": str(seed_text or "")[:60],
                            "subject": "self", "emotion": "", "weight": 1.0, "act": 0.0}
         self.adj[sid] = []
@@ -364,6 +370,11 @@ class ManasCore:
 
     # ── 步骤1：全局种子并行迭代 ────────────────────────────
     def step(self):
+        """网络一拍。**持锁执行**：与节点增删互斥 —— 并发下曾出现"nodes 还在、hist 已被摘"→ KeyError。"""
+        with self._lock:
+            return self._step_locked()
+
+    def _step_locked(self):
         """一个 tick：邻域加权求和 + 自然衰减 + 节点侧抑制 → 刷新全网 activation"""
         self.tick += 1
         nxt: dict[int, float] = {}
@@ -408,6 +419,10 @@ class ManasCore:
                 self._destroy_sensory(sid)
 
     def _destroy_sensory(self, sid: int):
+        with self._lock:
+            self._destroy_sensory_locked(sid)
+
+    def _destroy_sensory_locked(self, sid: int):
         self.sensory.pop(sid, None)
         self._sensory_owner.pop(sid, None)
         ev = self._sensory_evidence.pop(sid, "")
@@ -433,6 +448,10 @@ class ManasCore:
         用于「用户明确否认/纠正」——被否认的内容就是没发生过，不能留在网络里
         继续被采样、被当作主念主动提起。
         """
+        with self._lock:
+            self._forget_locked(seed_id)
+
+    def _forget_locked(self, seed_id: int):
         sid = int(seed_id)
         self.nodes.pop(sid, None)
         self.hist.pop(sid, None)
