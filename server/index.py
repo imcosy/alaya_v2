@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import json
+import httpx
 import time
 import uuid
 import asyncio
@@ -1761,6 +1762,19 @@ app = FastAPI(title="Alaya Memory Engine", lifespan=lifespan)
 async def _on_not_configured(request, exc):
     """模型接口未配置 → 503 + 可读原因（前端直接展示，而不是 "Internal Server Error"）"""
     return JSONResponse({"error": str(exc)}, status_code=503)
+
+
+@app.exception_handler(httpx.RequestError)
+async def _on_gateway_unreachable(request, exc):
+    """模型接口连不上（DNS/端口/防火墙/代理）：把**实际请求的地址**和底层异常报出来。
+
+    "All connection attempts failed" 这类信息完全指不到连的是哪个地址，只能靠猜；
+    这里直接把 exc.request.url 附上，一眼能看出是地址填错还是网络不通。
+    """
+    u = getattr(getattr(exc, "request", None), "url", "")
+    return JSONResponse(
+        {"error": f"连不上模型接口 {u}（{type(exc).__name__}）。请检查地址/网络/DNS/防火墙/代理。"},
+        status_code=502)
 
 
 app.include_router(auth.router)
