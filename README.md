@@ -316,6 +316,14 @@ changes over time. The console is just an observation window.
 
 ---
 
+## Community
+
+Questions about deployment, integration or contributing? Scan to join our QQ group (**1132314252**):
+
+<p align="center">
+  <img src="assets/qq-group.png" alt="Alaya community QQ group QR code" width="300">
+</p>
+
 ## License
 
 [Apache-2.0](LICENSE). Issues and PRs welcome.

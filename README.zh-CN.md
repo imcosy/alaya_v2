@@ -336,6 +336,14 @@ A：它不绑定任何前端形态。它只做一件事：让一个 AI 拥有**�
 
 ---
 
+## 交流群
+
+部署、接入、二次开发有问题，扫码加入 QQ 交流群（群号 **1132314252**）：
+
+<p align="center">
+  <img src="assets/qq-group.png" alt="Alaya 交流群二维码" width="300">
+</p>
+
 ## English TL;DR
 
 **Alaya** is a memory-native cognitive engine. Instead of retrieving document chunks and stuffing them into a prompt,
