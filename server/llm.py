@@ -33,16 +33,20 @@ def _client(timeout: float | None = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=t)
 
 
+class NotConfigured(RuntimeError):
+    """模型接口未配置（地址/Key 缺失）。这是用户可修复的前置条件，不是服务端故障。"""
+
+
 def _gw() -> tuple[str, str]:
     sec = settings.section("gateway")
     base = str(sec.get("base_url") or "").rstrip("/")
     key = str(sec.get("api_key") or "").strip()
     if not base:
-        raise RuntimeError("尚未配置统一接口地址（我的资料 → 模型设置）")
+        raise NotConfigured("尚未配置统一接口地址（我的资料 → 模型设置）")
     if not key:
         # 不能带着空 Key 发请求：httpx 会抛 LocalProtocolError("Illegal header value b'Bearer '")，
         # 报错信息完全指不到"没填 Key"这件事上。
-        raise RuntimeError(
+        raise NotConfigured(
             f"尚未填写 API Key：点「我的资料 → 模型设置」填入，或在 {settings.KEY_PORTAL} 申请")
     return base, key
 

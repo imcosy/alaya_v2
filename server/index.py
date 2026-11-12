@@ -40,7 +40,8 @@ logging.getLogger("websockets").setLevel(logging.CRITICAL)
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 from server import db, settings, seeds as seeds_mod, xixi, retrieval, extract, selfmodel, auth, profile, amnesia, organize, guide, life_stages, manas, dualview, working, updater  # noqa: E402
-from server.llm import llm_stream, llm_chat_fn, asr_recognize, tts_stream, cut_sentence, vl_describe  # noqa: E402
+from server.llm import (llm_stream, llm_chat_fn, asr_recognize, tts_stream, cut_sentence,  # noqa: E402
+                        vl_describe, NotConfigured)
 
 PUBLIC_DIR = os.path.join(os.path.dirname(_HERE), "public")
 # 本次进程的启动时间：前端更新重启后靠它判断"新进程已经起来了"，
@@ -1754,6 +1755,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Alaya Memory Engine", lifespan=lifespan)
+
+
+@app.exception_handler(NotConfigured)
+async def _on_not_configured(request, exc):
+    """模型接口未配置 → 503 + 可读原因（前端直接展示，而不是 "Internal Server Error"）"""
+    return JSONResponse({"error": str(exc)}, status_code=503)
+
+
 app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(amnesia.router)
