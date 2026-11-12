@@ -336,6 +336,19 @@ A：它不绑定任何前端形态。它只做一件事：让一个 AI 拥有**�
 
 ---
 
+## 宣传海报
+
+<p align="center">
+  <img src="assets/poster-1.png" width="46%" alt="Alaya 海报 1：记忆是此刻涌现出来的">
+  <img src="assets/poster-2.png" width="46%" alt="Alaya 海报 2：不是 RAG，是记忆">
+</p>
+<p align="center">
+  <img src="assets/poster-3.png" width="46%" alt="Alaya 海报 3：内容永不改，权重天天变">
+  <img src="assets/poster-4.png" width="46%" alt="Alaya 海报 4：一行命令让它开始记事">
+</p>
+
+四张海报可直接取用做分享（建议保留仓库地址）。
+
 ## 交流群
 
 部署、接入、二次开发有问题，扫码加入 QQ 交流群（群号 **1132314252**）：

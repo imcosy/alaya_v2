@@ -316,6 +316,19 @@ changes over time. The console is just an observation window.
 
 ---
 
+## Posters
+
+<p align="center">
+  <img src="assets/poster-1.png" width="46%" alt="Alaya poster 1: memory emerges, it is not retrieved">
+  <img src="assets/poster-2.png" width="46%" alt="Alaya poster 2: not RAG, but memory">
+</p>
+<p align="center">
+  <img src="assets/poster-3.png" width="46%" alt="Alaya poster 3: content never changes, weights change daily">
+  <img src="assets/poster-4.png" width="46%" alt="Alaya poster 4: clone it and it runs">
+</p>
+
+Feel free to reuse these posters for sharing (keeping the repo link is appreciated).
+
 ## Community
 
 Questions about deployment, integration or contributing? Scan to join our QQ group (**1132314252**):
